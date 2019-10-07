@@ -22,16 +22,16 @@ class Type {
     return this;
   }
 
-  public realType(): Type {
-    return this;
-  }
-
   public equals(ty: Type, update: boolean): boolean {
     return false;
   }
 
-  public accept(ty: Type): boolean {
-    return this.equals(ty, true);
+  public accept(ty: Type, update: boolean): boolean {
+    return this.equals(ty, update);
+  }
+
+  public realType(): Type {
+    return this;
   }
 
   public isPattern() {
@@ -61,8 +61,8 @@ class BaseType extends Type {
     if (v instanceof BaseType) {
       return this.name === v.name;
     }
-    if (update && v instanceof VarType) {
-      return v.must(this);
+    if (v instanceof VarType) {
+      return v.must(this, update);
     }
     return false;
   }
@@ -85,14 +85,14 @@ class BaseType extends Type {
 
 class VoidType extends BaseType {
 
-  constructor(isOptional?: any) {
-    super('void', isOptional);
+  constructor() {
+    super('void', false);
   }
 
-  public accept(ty: Type): boolean {
+  public accept(ty: Type, update: boolean): boolean {
     const v = ty.realType();
     if (v instanceof VarType) {
-      v.must(this);
+      v.must(this, update);
     }
     return true;
   }
@@ -104,12 +104,20 @@ class AnyType extends BaseType {
     super('any', isOptional);
   }
 
-  public accept(ty: Type): boolean {
+  public accept(ty: Type, update: boolean): boolean {
     const v = ty.realType();
     if (v instanceof VoidType) {
       return false;
     }
     return true;
+  }
+
+  public isPattern() {
+    return true;
+  }
+
+  public toVarType(map: any) {
+    return new VarType(map.env, map.t);
   }
 }
 
@@ -153,8 +161,8 @@ class FuncType extends Type {
         return true;
       }
     }
-    if (update && v instanceof VarType) {
-      return v.must(this);
+    if (v instanceof VarType) {
+      return v.must(this, update);
     }
     return false;
   }
@@ -204,16 +212,31 @@ class ListType extends Type {
     return this;
   }
 
+  public accept(ty: Type, update: boolean): boolean {
+    const v = ty.realType();
+    if (v instanceof ListType) {
+      if (this.param == tAny) {
+        return true;
+      }
+      return this.param.equals(v.param, update);
+    }
+    if (v instanceof VarType) {
+      return v.must(this, update);
+    }
+    return false;
+  }
+
   public equals(ty: Type, update: boolean): boolean {
     const v = ty.realType();
     if (v instanceof ListType) {
       return this.param.equals(v.param, update);
     }
     if (v instanceof VarType) {
-      return v.must(this);
+      return v.must(this, update);
     }
     return false;
   }
+
   public isPattern() {
     return this.param.isPattern();
   }
@@ -239,10 +262,36 @@ const tString_ = new BaseType('String', true);
 const tA = new BaseType('a');
 const tListA = new ListType(tA);
 const tListInt = new ListType(tInt);
+const tListAny = new ListType(tAny);
 const tUndefined = new BaseType('undefined');
 
+const EmptyNumberSet: number[] = [];
+
+const unionSet = (a: number[], b: number[], c?: number[]) => {
+  const A: number[] = [];
+  for (const id of a) {
+    if (A.indexOf(id) === -1) {
+      A.push(id);
+    }
+  }
+  for (const id of b) {
+    if (A.indexOf(id) === -1) {
+      A.push(id);
+    }
+  }
+  if (c !== undefined) {
+    for (const id of b) {
+      if (A.indexOf(id) === -1) {
+        A.push(id);
+      }
+    }
+  }
+  return A;
+}
+
+
 class VarType extends Type {
-  private varMap: Type[] = [];
+  private varMap: (Type | number[])[];
   private varid: number;
   private ref: ParseTree | null;
 
@@ -250,7 +299,7 @@ class VarType extends Type {
     super(false);
     this.varMap = env.getroot('@varmap');
     this.varid = this.varMap.length;
-    this.varMap.push(tUndefined);
+    this.varMap.push(EmptyNumberSet);
     this.ref = ref;
   }
 
@@ -262,18 +311,14 @@ class VarType extends Type {
     return 'any';
   }
 
-  public setref(t: ParseTree) {
-    this.ref = t;
-  }
-
   public realType(): Type {
     const v = this.varMap[this.varid];
-    return (v === tUndefined) ? this : v;
+    return (v instanceof Type) ? v : this;
   }
 
   public equals(ty: Type, update: boolean): boolean {
     var v = this.varMap[this.varid];
-    if (v !== tUndefined) {
+    if (v instanceof Type) {
       return v.equals(ty, update);
     }
     v = ty.realType();
@@ -284,8 +329,27 @@ class VarType extends Type {
     return this === v;
   }
 
-  public must(ty: Type): boolean {
-    this.varMap[this.varid] = ty;
+  public must(ty: Type, update: boolean): boolean {
+    const v1 = ty.realType();
+    if (update) {
+      if (v1 instanceof VarType) {
+        if (v1.varid === this.varid) {
+          return true;
+        }
+        const u = unionSet(this.varMap[this.varid] as number[], this.varMap[v1.varid] as number[], [v1.varid, this.varid]);
+        for (const id of u) {
+          this.varMap[id] = u;
+        }
+        return true;
+      }
+      if (!v1.isPattern()) {
+        const u = this.varMap[this.varid] as number[];
+        for (const id of u) {
+          this.varMap[id] = ty;
+        }
+        this.varMap[this.varid] = ty;
+      }
+    }
     return true;
   }
 }
@@ -346,13 +410,13 @@ class UnionType extends Type {
     return this.types[index];
   }
 
-  public accept(ty: Type): boolean {
+  public accept(ty: Type, update: boolean): boolean {
     const v = ty.realType();
     if (v instanceof VarType) {
       return true;
     }
     for (const t of this.types) {
-      if (t.accept(v)) {
+      if (t.accept(v, false)) {
         return true;
       }
     }
@@ -377,41 +441,6 @@ const union = (...types: Type[]) => {
     return types[0];
   }
   return new UnionType(...types);
-}
-
-const typeMap: any = {
-  'Int': tInt,
-  'Float': tFloat,
-  'String': tString,
-};
-
-const typeOf = (id: string) => {
-  const ty: Type = typeMap[id];
-  if (ty !== undefined) {
-    return ty;
-  }
-  return tAny;
-};
-
-const T = (ty: Type) => {
-  return ty;
-}
-
-const BINARY = {
-  '+': {
-    'left': [tInt, tString, tListA],
-  },
-  '*': {
-    'left': [tInt, tString, tListA],
-    'right': tInt,
-  },
-  '==': {
-    'return': tBool,
-  },
-  '<': {
-    'left': [tInt, tString],
-    'return': tBool,
-  },
 }
 
 class Symbol {
@@ -518,6 +547,36 @@ const KEYTYPES = {
   'textAlign': tString,
   'value': tInt,
   'message': tString,
+}
+
+//const ty1 = this.check(tleft(op), env, t['left'], out1);
+//const ty2 = this.check(tright(op, ty1), env, t['right'], out2);
+//return tbinary(env, t, ty1, out1.join(''), ty2, out1.join(''), out);
+const tCompr = union(tInt, tString);
+
+const tleftMap = {
+  '+': union(tInt, tString, tListAny),
+  '-': tInt, '**': tInt,
+  '*': union(tInt, tString, tListAny),
+  '/': tInt, '//': tInt, '%': tInt,
+  '==': tAny, '!=': tAny, 'in': tAny,
+  '<': tCompr, '<=': tCompr, '>': tCompr, '>=': tCompr,
+  '^': tInt, '|': tInt, '&': tInt, '<<': tInt, '>>': tInt,
+};
+
+const tleft = (op: string) => {
+  return (tleftMap as any)[op];
+}
+
+const tright = (op: string, ty: Type) => {
+  if (op == 'in') {
+    return union(new ListType(ty), tString);
+  }
+  const ty2 = (tleftMap as any)[op];
+  if (ty2 === tAny || ty2 === tInt || op === '*') {
+    return ty2;
+  }
+  return ty;  // 左と同じ型
 }
 
 type ErrorLog = {
@@ -693,7 +752,7 @@ class Transpiler {
 
   public check(req: Type, env: Env, t: ParseTree, out: string[], elog?: ErrorLog) {
     const ty = this.conv(env, t, out);
-    if (req.accept(ty)) {
+    if (req.accept(ty, true)) {
       return ty;
     }
     if (elog === undefined) {
@@ -707,6 +766,43 @@ class Transpiler {
     env.perror(t, elog);
     return this.skip(env, t, out);
   }
+
+  private checkBinary(env: Env, t: any, op: string, ty1: Type, left: string, ty2: Type, right: string, out: string[]) {
+    if (op === '==' || op === '!=') {
+      out.push(`${left} ${op}= ${right}`);
+      return tBool;
+    }
+    if (op === '*') {
+      if (tInt.equals(ty1, false) && tInt.equals(ty2, false)) {
+        out.push(`(${left} * ${right})`);
+        return tInt;
+      }
+      if (!tInt.equals(ty1, false)) {
+        out.push(`puppy.mul(${left},${right})`);
+        return ty1;
+      }
+      if (tInt.equals(ty1, false)) {
+        out.push(`puppy.mul(${left},${right})`);
+        return ty2;
+      }
+    }
+    if (ty1.equals(ty2, true)) {
+      out.push(`(${left} ${op} ${right})`);
+      if ((tleftMap as any)[op] === tCompr) {
+        return tBool;
+      }
+      return ty1;
+    }
+    env.perror(t, {
+      type: 'error',
+      key: 'BinaryTypeError',
+      subject: op,
+      request: ty1,
+      given: ty2,
+    });
+    return this.skip(env, t, out);
+  }
+
 
   public Source(env: Env, t: ParseTree, out: string[]) {
     for (const subtree of t.subs()) {
@@ -793,7 +889,7 @@ class Transpiler {
     out.push(`${defun} ${name}(${names.join(', ')}) => `)
     this.conv(lenv, t['body'], out);
     if (!funcData['hasReturn']) {
-      types[0].accept(tVoid);
+      types[0].accept(tVoid, true);
     }
     return tVoid;
   }
@@ -817,7 +913,7 @@ class Transpiler {
     out.push(`(${names.join(', ')}) => `)
     this.conv(lenv, t['body'], out);
     if (!funcData['hasReturn']) {
-      types[0].accept(tVoid);
+      types[0].accept(tVoid, true);
     }
     return funcType;
   }
@@ -914,18 +1010,28 @@ class Transpiler {
   }
 
   public Infix(env: Env, t: any, out: string[]) {
-    const op = (t.tokenize('op'));
-    this.conv(env, t['left'], out);
-    out.push(` ${op} `);
-    this.conv(env, t['right'], out);
-    return tAny; // FIXME
-    // const op = binary(t.tokenize('op'));
-    // const symbol = env.get(name) as Symbol;
-    // if (symbol === undefined) {
-    //   return tAny;
-    // }
-    // out.push(symbol.code);
-    // return symbol.ty;
+    const op = t.tokenize('name');
+    const out1: string[] = [];
+    const out2: string[] = [];
+    const ty1 = this.check(tleft(op), env, t['left'], out1);
+    const ty2 = this.check(tright(op, ty1), env, t['right'], out2);
+    return this.checkBinary(env, t, op, ty1, out1.join(''), ty2, out1.join(''), out);
+  }
+
+  public Unary(env: Env, t: any, out: string[]) {
+    const op = t.tokenize('name');
+    if (op === '!' || op === 'not') {
+      out.push(`${op}(`);
+      this.check(tBool, env, t['expr'], out);
+      out.push(')');
+      return tBool;
+    }
+    else {
+      out.push(`${op}(`);
+      this.check(tInt, env, t['expr'], out);
+      out.push(')');
+      return tInt;
+    }
   }
 
   public ApplyExpr(env: Env, t: any, out: string[]) {
@@ -971,87 +1077,6 @@ class Transpiler {
     //   env['@@yield'] = trace(env, t);
     return funcType.rtype();
   }
-
-
-  /******
-
-def emitArguments(env, t, args, types, prev, out):
-    tidx = 1
-    kargs = None
-    options = None
-    types = ts.unique(types)
-    while tidx < len(types):
-        if ts.isOption(types[tidx]):
-            kargs = args[tidx:]
-            options = types[tidx]
-            break
-        if tidx < len(args):
-            out.push(prev)
-            this.check(types[tidx], env, args[tidx], out)
-            tidx += 1
-            prev = ','
-        else:
-            if not ts.isOmittable(types[tidx]):
-                perror(env, t, f'必要な引数が足りません')
-            out.push(')')
-            return
-    if kargs != None:
-        out.push(prev)
-        out.push('{')
-        used_keys = {}
-        for sub in kargs:
-            if sub.tag == 'KeywordArgument':
-                KeywordArgument(env, sub, out, used_keys)
-            elif sub.tag == 'NLPSymbol':
-                NLPSymbol(env, sub, out, used_keys)
-            else:
-                pwarn(env, sub, 'この引数は使われません')
-        for k in types[tidx]:
-            if k not in used_keys:
-                emitOption(env, t, k, options[k], out, used_keys)
-        out.push(f"'trace': {trace(env, t)},")
-        out.push(f"'oid': {env['@@oid']},")
-        out.push('}')
-    out.push(')')
-
-  def Infix(env: Env, t, out):
-    op = str(t['name'])
-    if op in OPS:
-        op = OPS[op]
-    else:
-        perror(env, t['name'], f'{op}？ 未対応の演算子です。')
-        return emitUndefined(env, t['name'], out)
-    out1 = []
-    out2 = []
-    ty1 = this.check(ts.binaryFirst(op), env, t['left'], out1)
-    ty2 = this.check(ts.binarySecond(op, ty1), env, t['right'], out2)
-    left,  right = ''.join(out1), ''.join(out2)
-    ty = ts.typeBinary(env, t['op'], op, ty1, ty2, perror)
-    key = ts.typeKey(ty1, op)
-    if key in OPSFMT:
-        out.push(OPSFMT[key].format(left, right))
-    else:
-        out.push(OPSFMT[op].format(left, right))
-    return ty
-
-def Return(env: Env, t, out):
-    if '@local' not in env:
-        pwarn(env, t, 'ここで return文は使えません')
-        return tVoid
-    out.push('return')
-    ret = env['@local']
-    if 'expr' in t:
-        if ret == tVoid:
-            pwarn(env, t['expr'], 'この返値は無視されます')
-            return tVoid
-        out.push(' ')
-        this.check(ret, env, t['expr'], out, f'{ts.msg(ret)}を返すようにしてください')
-        return tVoid
-    if not ts.matchType(tVoid, ret):
-        perror(env, t, f'{ts.msg(ret)}を返すようにしてください')
-    return tVoid
-        
-  ******/
 
   public MethodExpr(env: Env, t: any, out: string[]) {
     const name = `.${t.tokenize('name')}`;
@@ -1168,7 +1193,7 @@ def Return(env: Env, t, out):
     for (const sub of t.subs()) {
       ty = this.check(ty, env, sub, out, {
         type: 'error',
-        key: 'AllTypeAsSame' //全ての要素を同じ型に揃えてください
+        key: 'AllTypeAsSame', //全ての要素を同じ型に揃えてください
       });
       out.push(',')
     }
