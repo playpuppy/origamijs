@@ -178,7 +178,7 @@ example VarDecl,Statement A += 1
 
 VarDecl = {
     left: LeftHand
-    [=] _ 
+    '=' _ 
     right: Expression
     #VarDecl
 } / SelfAssign

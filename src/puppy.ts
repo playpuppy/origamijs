@@ -1,4 +1,4 @@
-import { generate, ParseTree } from './puppy-parser';
+import { generate, ParseTree } from './puppy3-parser';
 
 const INDENT = '\t';
 
@@ -488,6 +488,36 @@ const import_python = {
   // 'Block': Symbol('Rectangle', const, (ts.Matter, tInt, tInt, { 'isStatic': 'true' })),
 };
 
+const tColor = union(tString, tInt);
+const tVec = new BaseType('Vec');
+const tMatter = new BaseType('Object');
+
+const KEYTYPES = {
+  'width': tInt, 'height': tInt,
+  'x': tInt, 'y': tInt,
+  'image': tString,
+  'strokeStyle': tColor,
+  'lineWidth': tInt,
+  'fillStyle': tColor,
+  'restitution': tFloat,
+  'angle': tFloat,
+  'position': tVec,
+  'mass': tInt, 'density': tInt, 'area': tInt,
+  'friction': tFloat, 'frictionStatic': tFloat, 'airFriction': tFloat,
+  'torque': tFloat, 'stiffness': tFloat,
+  'isSensor': tBool,
+  'isStatic': tBool,
+  'damping': tFloat,
+  'in': new FuncType(tVoid, tMatter, tMatter),
+  'out': new FuncType(tVoid, tMatter, tMatter),
+  'over': new FuncType(tVoid, tMatter, tMatter),
+  'clicked': new FuncType(tVoid, tMatter),
+  'font': tString,
+  'fontColor': tColor,
+  'textAlign': tString,
+  'value': tInt,
+  'message': tString,
+}
 
 class Env {
   private root: Env;
@@ -807,24 +837,24 @@ class Transpiler {
 
   public ApplyExpr(env: Env, t: any, out: string[]) {
     const name = t.tokenize('name');
-    const symbol = env.get(name);
+    const symbol = env.get(name) as Symbol;
     if (symbol === undefined) {
       env.perror(t['name'], `タイプミス？ ${name} 未定義な関数名です`);
       return tAny;
     }
-    out.push(symbol.name)
+    out.push(symbol.code)
     out.push('(')
-    const args = t.subs();
+    const args = t['params'].subs();
     const funcType = symbol.ty;
-    for (var i = 1; i < args.length; i += 1) {
-      if (!(i - 1 < funcType.psize())) {
+    for (var i = 0; i < args.length; i += 1) {
+      if (!(i < funcType.psize())) {
         env.pwarn(args, '冗長なパラメータです');
         break;
       }
-      if (i > 1) {
+      if (i > 0) {
         out.push(',');
       }
-      const ty = funcType.ptype(i - 1);
+      const ty = funcType.ptype(i);
       this.check(ty, env, args[i], out);
     }
     out.push(')');
@@ -945,92 +975,106 @@ def Return(env: Env, t, out):
     if not ts.matchType(tVoid, ret):
         perror(env, t, f'{ts.msg(ret)}を返すようにしてください')
     return tVoid
-
-
-def FuncExpr(env: Env, t, out):
-    with Env(env) as lenv:
-        types = [ts.Type()]
-        voidCheck = str(types[0])
-        out.push("(")
-        for p in t['params']:
-            pname = str(p)
-            ty = ts.Type()
-            if(len(types) > 1):
-                out.push(f',{pname}')
-            else:
-                out.push(pname)
-            types.append(ty)
-            lenv[pname] = Symbol(localName(pname), mutable, ty)
-        out.push(") => ")
-        lenv['@local'] = types[0]  # return type
-        this.conv(lenv, t['body'], out)
-        if voidCheck == str(types[0]):
-            types[0] = tVoid
-    return tuple(types)
-
-
-def Yield(env: Env, t, out):
-    if '@local' in env:
-        pwarn(env, t, '関数内で yield 文は使えません')
-        return
-    out.push(f'yield {t.pos()[2]}')
-    return tVoid
-
-
-def Continue(env: Env, t, out):
-    if '@inloop' in env:
-        pwarn(env, t, 'continue は、for文内でのみ使えます')
-        return
-    out.push('continue')
-    return tVoid
-
-
-def Break(env: Env, t, out):
-    if '@inloop' in env:
-        pwarn(env, t, 'break は、for文内でのみ使えます')
-        return
-    out.push('break')
-    return tVoid
-
-
-def Pass(env: Env, t, out):
-    return tVoid
-
-def Tuple(env: Env, t, out):
-    subs = t.subs()
-    if len(subs) > 2:
-        pwarn(env, t, 'リストは[ ]で囲みましょう')
-        return List(env, t, out)
-    if len(subs) == 1:
-        out.push('(')
-        ty = this.conv(env, subs[0][1], out)
-        out.push(')')
-        return ty
-    else:
-        out.push('{ x: ')
-        this.check(ty, env, subs[0][1], out, 'ベクトルの要素は数値です')
-        out.push(', y: ')
-        this.check(ty, env, subs[1][1], out, 'ベクトルの要素は数値です')
-        out.push('}')
-        return ts.Vec
-
-
-def Data(env: Env, t, out):
-    out.push('{')
-    for sub in t:
-        this.conv(env, sub, out)
-        out.push(',')
-    out.push('}')
-    return ts.Object
-
-
-def KeyValue(env: Env, t, out):
-    this.conv(env, t['name'], out)
-    out.push(': ')
-    this.conv(env, t['value'], out)
-    return tVoid
-
+        
   ******/
+
+  public MethodExpr(env: Env, t: any, out: string[]) {
+    const name = `.${t.tokenize('name')}`;
+    const symbol = env.get(name);
+    if (symbol === undefined) {
+      env.perror(t['name'], `タイプミス？ ${name} 未定義なメトッド名です`);
+      return tAny;
+    }
+    const funcType = symbol.ty;
+    out.push(symbol.name);
+    const args = t['params'].subs();
+    args.unshift(t['recv']);
+    out.push('(')
+    for (var i = 0; i < args.length; i += 1) {
+      if (!(i < funcType.psize())) {
+        env.pwarn(args, '冗長なパラメータです');
+        break;
+      }
+      if (i > 0) {
+        out.push(',');
+      }
+      const ty = funcType.ptype(i);
+      this.check(ty, env, args[i], out);
+    }
+    out.push(')');
+    return funcType.rtype();
+  }
+
+  public GetExpr(env: Env, t: any, out: string[]) {
+    const name = t.tokenize('name');
+    // const pkgname = t.tokenize('recv');
+    // const pkg = env.get(pkgname);
+    // if (pkg !== undefined && !(pkg instanceof Symbol)) {
+    //   pkg[name];
+    // }
+    this.check(tMatter, env, t['recv'], out);
+    out.push('.');
+    const ty = (KEYTYPES as any)[name] || new VarType(env, t['name']);
+    if (ty instanceof UnionType) {
+      return ty.ptype(0);
+    }
+    return ty;
+  }
+
+  public Index(env: Env, t: any, out: string[]) {
+    const ty = this.check(union(new ListType(new VarType(env, t)), tString), env, t['recv'], out)
+    out.push('[')
+    this.check(tInt, env, t['index'], out)
+    out.push(']')
+    if (ty instanceof ListType) {
+      return ty.ptype(0);
+    }
+    return ty;
+  }
+
+  public Data(env: Env, t: ParseTree, out: string[]) {
+    out.push('{');
+    for (const sub of t.subs()) {
+      this.conv(env, sub, out);
+      out.push(',');
+    }
+    out.push('}');
+    return tOption;
+  }
+
+  public KeyValue(env: Env, t: any, out: string[]) {
+    const name = t.tokenize('name');
+    out.push(`'${name}': `)
+    const ty = (KEYTYPES as any)[name];
+    if (ty === undefined) {
+      env.pwarn(t['name'], `タイポ？ ${name}`);
+      this.conv(env, t['value'], out)
+    }
+    else {
+      this.check(ty, env, t['value'], out);
+    }
+    return tVoid
+  }
+
+  public Tuple(env: Env, t: ParseTree, out: string[]) {
+    const subs = t.subs()
+    if (subs.length > 2) {
+      env.pwarn(t, 'リストは[ ]で囲みましょう')
+      return this.List(env, t, out)
+    }
+    if (subs.length == 1) {
+      out.push('(')
+      const ty = this.conv(env, subs[0], out)
+      out.push(')')
+      return ty;
+    }
+    out.push('{ x: ')
+    this.check(tInt, env, subs[0], out);
+    out.push(', y: ')
+    this.check(tInt, env, subs[1], out);
+    out.push('}')
+    return tVec;
+  }
 
   public List(env: Env, t: ParseTree, out: string[]) {
     var ty = new VarType(env, t);
