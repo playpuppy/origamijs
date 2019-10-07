@@ -74,15 +74,12 @@ export class ParseTree {
     if (index === undefined) {
       return this.inputs.substring(this.spos, this.epos);
     }
-    return (this as any)[index] || (defstr || '')
+    const child = (this as any)[index];
+    if (child === undefined) {
+      return (defstr || '');
+    }
+    return child.tokenize();
   }
-
-  // def __repr__(self):
-  // if self.isError():
-  //   return self.showing('Syntax Error')
-  // sb = []
-  // self.strOut(sb)
-  // return "".join(sb)
 
   public toString() {
     const sb: string[] = [];
@@ -469,7 +466,8 @@ const pSymbol = (sid: number, match: (px: ParserContext) => boolean) => {
   return (px: ParserContext) => {
     const pos = px.pos
     if (match(px)) {
-      px.state = new State(sid, px.inputs.substring(pos, px.pos), px.state)
+      px.state = new State(sid, px.inputs.substring(pos, px.pos), px.state);
+      //console.log(`SYMBOL ${sid} "${px.inputs.substring(pos, px.pos)}"`);
       return true;
     }
     return false;
@@ -485,8 +483,10 @@ const pExists = (sid: number) => {
 const pMatch = (sid: number) => {
   return (px: ParserContext) => {
     const state = getstate(px.state, sid);
+    //console.log(`MATCH ${sid} "${state}"`);
     if (state !== null) {
-      if (px.inputs.startsWith(state.value)) {
+      //console.log(`MATCH2 ${sid} result ${px.inputs.startsWith(state.value, px.pos)} "${state.value}" `);
+      if (px.inputs.startsWith(state.value, px.pos)) {
         px.pos += (state.value as string).length;
         return true;
       }

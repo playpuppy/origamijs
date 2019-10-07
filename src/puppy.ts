@@ -263,7 +263,12 @@ const tA = new BaseType('a');
 const tListA = new ListType(tA);
 const tListInt = new ListType(tInt);
 const tListAny = new ListType(tAny);
-const tUndefined = new BaseType('undefined');
+const tMatter = new BaseType('Object');
+const tObject = tMatter;
+const tVec = new BaseType('Vec');
+
+
+//const tUndefined = new BaseType('undefined');
 
 const EmptyNumberSet: number[] = [];
 
@@ -289,7 +294,6 @@ const unionSet = (a: number[], b: number[], c?: number[]) => {
   return A;
 }
 
-
 class VarType extends Type {
   private varMap: (Type | number[])[];
   private varid: number;
@@ -305,7 +309,7 @@ class VarType extends Type {
 
   public toString() {
     const v = this.varMap[this.varid];
-    if (v !== tUndefined) {
+    if (v instanceof Type) {
       return v.toString();
     }
     return 'any';
@@ -446,20 +450,24 @@ const union = (...types: Type[]) => {
 class Symbol {
   public code: string;
   public ty: Type;
-  public isMatter: boolean;
-  public constructor(code: string, ty: Type) {
+  public isMatter: boolean = false;
+  public constructor(code: string, ty: Type, options?: any) {
     this.code = code;
     this.ty = ty.realType();
-    this.isMatter = false;
+    if (options !== undefined) {
+      this.isMatter = options.isMatter === undefined ? false : options.isMatter;
+    }
   }
   public isGlobal() {
     return this.code.indexOf('puppy.vars[') == 0;
   }
 }
 
+const tColor = new UnionType(tString, tInt);
 const tOption = new OptionType({});
 const tFuncFloatFloat = new FuncType(tFloat, tFloat);
 const tFuncFloatFloatFloat = new FuncType(tFloat, tFloat, tFloat);
+const tFuncShape = new FuncType(tMatter, tInt, tInt, tOption);
 
 const import_math = {
   'pi': new Symbol('3.14159', tFloat),
@@ -494,6 +502,18 @@ const import_python = {
   'str': new Symbol('puppy.str', new FuncType(tString, tAny)),
   'random': new Symbol('Math.random', new FuncType(tInt)),
 
+  'Circle': new Symbol('Circle', tFuncShape),
+  // 'Rectangle': Symbol('Rectangle', const, ts.MatterTypes),
+  // 'Polygon': Symbol('Polygon', const, ts.MatterTypes),
+  // 'Label': Symbol('Label', const, ts.MatterTypes),
+  // 'Drop': Symbol('Drop', const, ts.MatterTypes),
+  // 'Newton': Symbol('Pendulum', const, ts.MatterTypes),
+  // 'Ball': Symbol('Circle', const, (ts.Matter, tInt, tInt, { 'restitution': 1.0 })),
+  // 'Block': Symbol('Rectangle', const, (ts.Matter, tInt, tInt, { 'isStatic': 'true' })),
+
+}
+
+const import_puppy = {
   // # 物体メソッド
   // '.setPosition': Symbol('puppy.setPosition', const, (tVoid, ts.Matter, tInt, tInt)),
   // '.applyForce': Symbol('puppy.applyForce', const, (tVoid, ts.Matter, tInt, tInt, tInt, tInt)),
@@ -508,19 +528,8 @@ const import_python = {
 
   // # クラス
   // 'World': Symbol('world', const, ts.MatterTypes),
-  // 'Circle': Symbol('Circle', const, ts.MatterTypes),
-  // 'Rectangle': Symbol('Rectangle', const, ts.MatterTypes),
-  // 'Polygon': Symbol('Polygon', const, ts.MatterTypes),
-  // 'Label': Symbol('Label', const, ts.MatterTypes),
-  // 'Drop': Symbol('Drop', const, ts.MatterTypes),
-  // 'Newton': Symbol('Pendulum', const, ts.MatterTypes),
-  // 'Ball': Symbol('Circle', const, (ts.Matter, tInt, tInt, { 'restitution': 1.0 })),
-  // 'Block': Symbol('Rectangle', const, (ts.Matter, tInt, tInt, { 'isStatic': 'true' })),
 };
 
-const tColor = union(tString, tInt);
-const tVec = new BaseType('Vec');
-const tMatter = new BaseType('Object');
 
 const KEYTYPES = {
   'width': tInt, 'height': tInt,
@@ -565,7 +574,12 @@ const tleftMap = {
 };
 
 const tleft = (op: string) => {
-  return (tleftMap as any)[op];
+  const ty = (tleftMap as any)[op];
+  if (ty === undefined) {
+    console.log(`FIXME undefined '${op}'`);
+    return tAny;
+  }
+  return ty;
 }
 
 const tright = (op: string, ty: Type) => {
@@ -618,7 +632,9 @@ class Env {
     if (env === undefined) {
       this.root = this;
       this.parent = null;
-      this.vars['@varmap'] = []
+      this.vars['@varmap'] = [];
+      this.vars['@logs'] = [];
+      this.vars['@indent'] = INDENT;
     }
     else {
       this.root = env.root;
@@ -656,8 +672,17 @@ class Env {
     return value;
   }
 
+  public from_import(pkg: any, list?: string[]) {
+    for (const name of Object.keys(pkg)) {
+      //console.log(name);
+      if (list === undefined || list.indexOf(name) !== -1) {
+        this.vars[name] = pkg[name];
+      }
+    }
+  }
+
   public perror(t: ParseTree, elog: ErrorLog) {
-    const logs = this.root.vars['@@logs'];
+    const logs = this.root.vars['@logs'];
     if (elog.pos === undefined) {
       elog = setpos(t.inputs, t.spos, elog);
     }
@@ -696,6 +721,18 @@ class Env {
     return this.get('@func') !== undefined;
   }
 
+  public foundFunc(t: ParseTree, symbol: Symbol) {
+    if (symbol.isMatter) {
+      const data = this.get('@func');
+      if (data !== undefined) {
+        data['isMatter'] = true;
+      }
+      else {
+        const pos = setpos(t.inputs, t.spos, { type: '', key: '' });
+        this.setroot('@yeild', pos.row);
+      }
+    }
+  }
 
   public declVar(name: string, ty: Type) {
     var code = `puppy.vars['${name}']`
@@ -709,16 +746,17 @@ class Env {
   public emitAutoYield(out: string[]) {
     const yieldparam = this.getroot('@yeild');
     if (yieldparam !== undefined && !this.inFunc()) {
-      out.push(`; yield ${yieldparam};\n`)
+      out.push(`; yield ${yieldparam};\n`);
       this.setroot('@yeild', undefined);
     }
     else {
-      out.push('\n')
+      out.push('\n');
     }
   }
+
 }
 
-class TypeError {
+class PuppyError {
   public constructor() {
   }
 }
@@ -734,18 +772,24 @@ class Transpiler {
       return (this as any)[t.tag](env, t, out);
     }
     catch (e) {
-      console.log(e);
-      env.perror(t, {
-        type: 'error',
-        key: 'UndefinedParseTree',
-        subject: t.toString(),
-      })
-      return this.skip(env, t, out);
+      if (e instanceof PuppyError) {
+        throw e;
+      }
+      if ((this as any)[t.tag] === undefined) {
+        console.log(e);
+        env.perror(t, {
+          type: 'error',
+          key: 'UndefinedParseTree',
+          subject: t.toString(),
+        })
+        return this.skip(env, t, out);
+      }
+      throw e;
     }
   }
 
   public skip(env: Env, t: ParseTree, out: string[]) {
-    throw new TypeError();
+    throw new PuppyError();
     // out.push('undefined');
     // return tAny;
   }
@@ -786,6 +830,10 @@ class Transpiler {
         return ty2;
       }
     }
+    if (op === '**') {
+      out.push(`Math.pow(${left},${right})`);
+      return tInt;
+    }
     if (ty1.equals(ty2, true)) {
       out.push(`(${left} ${op} ${right})`);
       if ((tleftMap as any)[op] === tCompr) {
@@ -803,6 +851,13 @@ class Transpiler {
     return this.skip(env, t, out);
   }
 
+  public err(env: Env, t: ParseTree, out: string[]) {
+    env.perror(t, {
+      type: 'error',
+      key: 'SyntaxError',
+    });
+    return tVoid;
+  }
 
   public Source(env: Env, t: ParseTree, out: string[]) {
     for (const subtree of t.subs()) {
@@ -875,8 +930,9 @@ class Transpiler {
       'name': name,
       'return': types[0],
       'hasReturn': false,
+      'isMatter': false,
     });
-    for (const p of t['params']) {
+    for (const p of t['params'].subs()) {
       const pname = p.tokenize('name');
       const ptype = new VarType(env, p['name']);
       const symbol = lenv.declVar(pname, ptype);
@@ -886,8 +942,9 @@ class Transpiler {
     const funcType = new FuncType(...types);
     const symbol = env.declVar(name, funcType);
     const defun = symbol.isGlobal() ? '' : 'var ';
-    out.push(`${defun} ${name}(${names.join(', ')}) => `)
+    out.push(`${defun}${symbol.code} = (${names.join(', ')}) => `)
     this.conv(lenv, t['body'], out);
+    symbol.isMatter = funcData['isMatter'];
     if (!funcData['hasReturn']) {
       types[0].accept(tVoid, true);
     }
@@ -902,7 +959,7 @@ class Transpiler {
       'return': types[0],
       'hasReturn': false,
     });
-    for (const p of t['params']) {
+    for (const p of t['params'].subs()) {
       const pname = p.tokenize('name');
       const ptype = new VarType(env, p['name']);
       const symbol = lenv.declVar(pname, ptype);
@@ -929,7 +986,7 @@ class Transpiler {
     }
     const funcData = env.get('@func');
     funcData['hasReturn'] = true;
-    if (t.has('expr')) {
+    if (t['expr'] !== undefined) {
       out.push('return ');
       this.check(funcData['return'], env, t['expr'], out);
     }
@@ -969,7 +1026,6 @@ class Transpiler {
     return tVoid;
   }
 
-
   public VarDecl(env: Env, t: any, out: string[]) {
     const left = t['left'] as ParseTree;
     if (left.tag === 'Name') {
@@ -977,14 +1033,15 @@ class Transpiler {
       var symbol = env.get(name) as Symbol;
       if (symbol === undefined) {
         const ty = new VarType(env, left);
+        const out1: string[] = [];
+        this.check(ty, env, t['right'], out1);
         symbol = env.declVar(name, ty);
         if (symbol.isGlobal()) {
-          out.push(`${symbol.code} = `);
+          out.push(`${symbol.code} = ${out1.join('')}`);
         }
         else {
-          out.push(`var ${symbol.code} = `);
+          out.push(`var ${symbol.code} = ${out1.join('')}`);
         }
-        this.check(ty, env, t['right'], out)
         return tVoid;
       }
     }
@@ -1015,7 +1072,7 @@ class Transpiler {
     const out2: string[] = [];
     const ty1 = this.check(tleft(op), env, t['left'], out1);
     const ty2 = this.check(tright(op, ty1), env, t['right'], out2);
-    return this.checkBinary(env, t, op, ty1, out1.join(''), ty2, out1.join(''), out);
+    return this.checkBinary(env, t, op, ty1, out1.join(''), ty2, out2.join(''), out);
   }
 
   public Unary(env: Env, t: any, out: string[]) {
@@ -1235,7 +1292,6 @@ class Transpiler {
     out.push(t.tokenize());  // FIXME
     return tString;
   }
-
 }
 
 const parser = generate('Source');
@@ -1243,10 +1299,30 @@ const parser = generate('Source');
 const transpile = (s: string, errors?: []) => {
   const t = parser(s);
   const env = new Env();
+  env.from_import(import_python);
   const ts = new Transpiler();
   const out: string[] = [];
   ts.conv(env, t, out);
+  console.log(env.get('@logs'));
   return out.join('')
 }
 
-console.log(transpile('x=1\nx'));
+console.log(transpile(`
+x = 1
+x+1
+print("hello,world")
+print("Hello", fillStyle='red')
+`));
+
+console.log(transpile(`
+def fibo(n):
+  return n+1
+1
+`));
+
+console.log(transpile(`
+a = 1
+if a == 1:
+  a = 2
+  a = 3
+`));
