@@ -520,6 +520,35 @@ const KEYTYPES = {
   'message': tString,
 }
 
+type ErrorLog = {
+  type: string;
+  key: string;
+  pos?: number;
+  row?: number;
+  column?: number;
+  len?: number;
+  subject?: string;
+  request?: Type;
+  given?: Type;
+};
+
+const setpos = (s: string, pos: number, elog: ErrorLog) => {
+  const max = Math.min(pos + 1, s.length);
+  var r = 1;
+  var c = 0;
+  for (var i = 0; i < max; i += 1) {
+    if (s.charCodeAt(i) == 10) {
+      r += 1;
+      c = 0;
+    }
+    c += 1;
+  }
+  elog.pos = pos;
+  elog.row = r;
+  elog.column = c;
+  return elog;
+}
+
 class Env {
   private root: Env;
   private parent: Env | null;
@@ -568,26 +597,27 @@ class Env {
     return value;
   }
 
-  private plog(type: string, t: ParseTree, msg: string) {
+  public perror(t: ParseTree, elog: ErrorLog) {
     const logs = this.root.vars['@@logs'];
-    const pos = 0; // FIXME _, pos, raw, col = t.beginPos()
-    const row = 0;
-    const col = 0;
-    const len = 0;
-    logs.push([type, pos, row, col, msg, len]);
+    if (elog.pos === undefined) {
+      elog = setpos(t.inputs, t.spos, elog);
+    }
+    if (elog.len === undefined) {
+      elog.len = t.epos - t.spos;
+    }
+    logs.push(elog);
   }
 
-  public perror(t: ParseTree, msg: string) {
-    this.plog('error', t, msg);
-  }
+  // public perror(t: ParseTree, elog: ErrorLog) {
+  //   this.log2(t, elog);
+  // }
+  // public pwarn(t: ParseTree, msg: string) {
+  //   this.plog('warning', t, msg);
+  // }
 
-  public pwarn(t: ParseTree, msg: string) {
-    this.plog('warning', t, msg);
-  }
-
-  public pinfo(t: ParseTree, msg: string) {
-    this.plog('info', t, msg);
-  }
+  // public pinfo(t: ParseTree, msg: string) {
+  //   this.plog('info', t, msg);
+  // }
 
   public setInLoop() {
     this.set('@inloop', true);
@@ -629,6 +659,11 @@ class Env {
   }
 }
 
+class TypeError {
+  public constructor() {
+  }
+}
+
 class Transpiler {
 
   public constructor() {
@@ -641,24 +676,50 @@ class Transpiler {
     }
     catch (e) {
       console.log(e);
-      out.push('undefined');
-      return tAny;
+      env.perror(t, {
+        type: 'error',
+        key: 'UndefinedParseTree',
+        subject: t.toString(),
+      })
+      return this.skip(env, t, out);
     }
   }
 
-  public check(req: Type, env: Env, t: ParseTree, out: string[], msg?: string) {
+  public skip(env: Env, t: ParseTree, out: string[]) {
+    throw new TypeError();
+    // out.push('undefined');
+    // return tAny;
+  }
+
+  public check(req: Type, env: Env, t: ParseTree, out: string[], elog?: ErrorLog) {
     const ty = this.conv(env, t, out);
     if (req.accept(ty)) {
-      return
+      return ty;
     }
-    return ty;
+    if (elog === undefined) {
+      elog = {
+        type: 'error',
+        key: 'TypeError',
+      }
+    }
+    elog.request = req;
+    elog.given = ty;
+    env.perror(t, elog);
+    return this.skip(env, t, out);
   }
 
   public Source(env: Env, t: ParseTree, out: string[]) {
     for (const subtree of t.subs()) {
-      out.push(env.get('@indent'))
-      this.conv(env, subtree, out);
-      env.emitAutoYield(out);
+      try {
+        const out2: string[] = [];
+        out2.push(env.get('@indent'))
+        this.conv(env, subtree, out2);
+        env.emitAutoYield(out2);
+        out.push(out2.join(''))
+      }
+      catch (e) {
+        console.log(e);
+      }
     }
     return tVoid;
   }
@@ -692,7 +753,9 @@ class Transpiler {
 
   public ForStmt(env: Env, t: any, out: string[]) {
     if (t['each'].tag !== 'Name') {
-      env.perror(t['each'], '変数名が欲しいところです');
+      env.perror(t['each'], {
+        type: 'error', key: 'RequiredIdentifier',
+      });
       return tVoid;
     }
     const name = t['each'].tokenize();
@@ -702,8 +765,7 @@ class Transpiler {
     out.push(')')
     const lenv = new Env(env);
     lenv.declVar(name, ty);
-    //env[name] = Symbol(localName(name), True, ty)
-    //env['inloop'] = True
+    lenv.setInLoop();
     this.conv(lenv, t['body'], out)
     return tVoid
   }
@@ -762,7 +824,11 @@ class Transpiler {
 
   public Return(env: Env, t: any, out: string[]) {
     if (!env.inFunc()) {
-      env.perror(t, `return文が使えるのは関数内のみです`);
+      env.perror(t, {
+        type: 'warning',
+        key: 'OnlyInFunction',
+        subject: 'return',
+      });
       return tVoid;
     }
     const funcData = env.get('@func');
@@ -779,7 +845,11 @@ class Transpiler {
 
   public Continue(env: Env, t: any, out: string[]) {
     if (!env.inLoop()) {
-      env.perror(t, `continue文が使えるのはfor文内のみです`);
+      env.perror(t, {
+        type: 'warning',
+        key: 'OnlyInLoop',
+        subject: 'continue',
+      });
       return tVoid;
     }
     out.push('continue');
@@ -788,7 +858,11 @@ class Transpiler {
 
   public Break(env: Env, t: any, out: string[]) {
     if (!env.inLoop()) {
-      env.perror(t, `break文が使えるのはfor文内のみです`);
+      env.perror(t, {
+        type: 'warning',
+        key: 'OnlyInLoop',
+        subject: 'break',
+      });
       return tVoid;
     }
     out.push('break');
@@ -828,8 +902,12 @@ class Transpiler {
     const name = t.tokenize();
     const symbol = env.get(name) as Symbol;
     if (symbol === undefined) {
-      env.perror(t, `変数${name}の値は何ですか？`)
-      return tAny;
+      env.perror(t, {
+        type: 'error',
+        key: 'UndefinedName',
+        subject: name,
+      });
+      return this.skip(env, t, out);
     }
     out.push(symbol.code);
     return symbol.ty;
@@ -854,8 +932,12 @@ class Transpiler {
     const name = t.tokenize('name');
     const symbol = env.get(name) as Symbol;
     if (symbol === undefined) {
-      env.perror(t['name'], `タイプミス？ ${name} 未定義な関数名です`);
-      return tAny;
+      env.perror(t['name'], {
+        type: 'error',
+        key: 'UnknownName',
+        subject: name,
+      });
+      return this.skip(env, t, out);
     }
     out.push(symbol.code)
     out.push('(')
@@ -863,7 +945,11 @@ class Transpiler {
     const funcType = symbol.ty;
     for (var i = 0; i < args.length; i += 1) {
       if (!(i < funcType.psize())) {
-        env.pwarn(args, '冗長なパラメータです');
+        env.perror(args[i], {
+          type: 'warning',
+          key: 'TooManyArguments',
+          subject: args[i],
+        });
         break;
       }
       if (i > 0) {
@@ -874,7 +960,10 @@ class Transpiler {
     }
     if (args.length < funcType.psize()) {
       if (!funcType.ptype(args.length)) {
-        env.perror(t['name'], '必要な引数が足りません');
+        env.perror(t['name'], setpos(t.inputs, t['params'].epos, {
+          type: 'error',
+          key: 'RequiredArguments',
+        }));
       }
     }
     out.push(')');
@@ -968,8 +1057,12 @@ def Return(env: Env, t, out):
     const name = `.${t.tokenize('name')}`;
     const symbol = env.get(name);
     if (symbol === undefined) {
-      env.perror(t['name'], `タイプミス？ ${name} 未定義なメトッド名です`);
-      return tAny;
+      env.perror(t['name'], {
+        type: 'error',
+        key: 'UnknownName',
+        subject: name,
+      });
+      return this.skip(env, t, out);
     }
     const funcType = symbol.ty;
     out.push(symbol.name);
@@ -978,7 +1071,7 @@ def Return(env: Env, t, out):
     out.push('(')
     for (var i = 0; i < args.length; i += 1) {
       if (!(i < funcType.psize())) {
-        env.pwarn(args, '冗長なパラメータです');
+        //env.pwarn(args, '冗長なパラメータです');
         break;
       }
       if (i > 0) {
@@ -1033,7 +1126,11 @@ def Return(env: Env, t, out):
     out.push(`'${name}': `)
     const ty = (KEYTYPES as any)[name];
     if (ty === undefined) {
-      env.pwarn(t['name'], `タイポ？ ${name}`);
+      env.perror(t['name'], {
+        type: 'warning',
+        key: 'UnknownName',
+        subject: name,
+      });
       this.conv(env, t['value'], out)
     }
     else {
@@ -1045,8 +1142,11 @@ def Return(env: Env, t, out):
   public Tuple(env: Env, t: ParseTree, out: string[]) {
     const subs = t.subs()
     if (subs.length > 2) {
-      env.pwarn(t, 'リストは[ ]で囲みましょう')
-      return this.List(env, t, out)
+      env.perror(t, {
+        type: 'warning',
+        key: 'ListSyntaxError', //リストは[ ]で囲みましょう
+      });
+      return this.List(env, t, out);
     }
     if (subs.length == 1) {
       out.push('(')
@@ -1066,7 +1166,10 @@ def Return(env: Env, t, out):
     var ty = new VarType(env, t);
     out.push('[')
     for (const sub of t.subs()) {
-      ty = this.check(ty, env, sub, out, '全ての要素を同じ型に揃えてください')
+      ty = this.check(ty, env, sub, out, {
+        type: 'error',
+        key: 'AllTypeAsSame' //全ての要素を同じ型に揃えてください
+      });
       out.push(',')
     }
     out.push(']')
