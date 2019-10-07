@@ -238,6 +238,7 @@ const tString = new BaseType('String');
 const tString_ = new BaseType('String', true);
 const tA = new BaseType('a');
 const tListA = new ListType(tA);
+const tListInt = new ListType(tInt);
 const tUndefined = new BaseType('undefined');
 
 class VarType extends Type {
@@ -588,6 +589,14 @@ class Env {
     this.plog('info', t, msg);
   }
 
+  public setInLoop() {
+    this.set('@inloop', true);
+    return true;
+  }
+
+  public inLoop() {
+    return this.get('@inloop') === true;
+  }
 
   public setFunc(data: any) {
     this.set('@func', data)
@@ -597,6 +606,7 @@ class Env {
   public inFunc() {
     return this.get('@func') !== undefined;
   }
+
 
   public declVar(name: string, ty: Type) {
     var code = `puppy.vars['${name}']`
@@ -826,13 +836,18 @@ class Transpiler {
   }
 
   public Infix(env: Env, t: any, out: string[]) {
-    const op = binary(t.tokenize('op'));
-    const symbol = env.get(name) as Symbol;
-    if (symbol === undefined) {
-      return tAny;
-    }
-    out.push(symbol.code);
-    return symbol.ty;
+    const op = (t.tokenize('op'));
+    this.conv(env, t['left'], out);
+    out.push(` ${op} `);
+    this.conv(env, t['right'], out);
+    return tAny; // FIXME
+    // const op = binary(t.tokenize('op'));
+    // const symbol = env.get(name) as Symbol;
+    // if (symbol === undefined) {
+    //   return tAny;
+    // }
+    // out.push(symbol.code);
+    // return symbol.ty;
   }
 
   public ApplyExpr(env: Env, t: any, out: string[]) {
@@ -857,6 +872,11 @@ class Transpiler {
       const ty = funcType.ptype(i);
       this.check(ty, env, args[i], out);
     }
+    if (args.length < funcType.psize()) {
+      if (!funcType.ptype(args.length)) {
+        env.perror(t['name'], '必要な引数が足りません');
+      }
+    }
     out.push(')');
     // if name == 'puppy.print':
     //   env['@@yield'] = trace(env, t);
@@ -865,40 +885,6 @@ class Transpiler {
 
 
   /******
-
-
-def ApplyExpr(env: Env, t, out):
-    name = str(t['name'])
-    if name in env:
-        vari = env[name]
-        name = vari.target
-        types = vari.types
-        if name == 'world':
-            set_World(env, t, types[-1])
-            return ts.Matter
-    elif t['name'].tag == 'NLPSymbol':
-        name, types = checkNLPMatter(env, name, t)
-    else:
-        perror(env, t['name'], f'タイプミス？ {name} 未定義な関数名です')
-        return ts.Type()  # To avoid error
-
-    if ts.isMatterFunc(types):
-        with Env(env) as env:
-            out.push(f'puppy.new_(puppy.vars["{name}"],')
-            args = [x for x in t]
-            emitArguments(env, t['name'], args, types, '', out)
-            env['@@yield'] = trace(env, t)
-            env['@@oid'] += 1
-    else:
-        out.push(name)
-        out.push('(')
-        args = [x for x in t]
-        emitArguments(env, t['name'], args, types, '', out)
-        if name == 'puppy.print':
-            env['@@yield'] = trace(env, t)
-            env['@@oid'] += 1
-    return types[0]
-
 
 def emitArguments(env, t, args, types, prev, out):
     tidx = 1
