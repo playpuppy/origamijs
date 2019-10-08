@@ -2,6 +2,8 @@ import { generate, ParseTree } from './puppy3-parser';
 
 const INDENT = '\t';
 
+/* Type System */
+
 class Type {
   public isOptional: boolean;
   public constructor(isOptional: boolean) {
@@ -340,7 +342,8 @@ class VarType extends Type {
         if (v1.varid === this.varid) {
           return true;
         }
-        const u = unionSet(this.varMap[this.varid] as number[], this.varMap[v1.varid] as number[], [v1.varid, this.varid]);
+        const u = unionSet(this.varMap[this.varid] as number[],
+          this.varMap[v1.varid] as number[], [v1.varid, this.varid]);
         for (const id of u) {
           this.varMap[id] = u;
         }
@@ -510,7 +513,6 @@ const import_python = {
   // 'Newton': Symbol('Pendulum', const, ts.MatterTypes),
   // 'Ball': Symbol('Circle', const, (ts.Matter, tInt, tInt, { 'restitution': 1.0 })),
   // 'Block': Symbol('Rectangle', const, (ts.Matter, tInt, tInt, { 'isStatic': 'true' })),
-
 }
 
 const import_puppy = {
@@ -530,6 +532,9 @@ const import_puppy = {
   // 'World': Symbol('world', const, ts.MatterTypes),
 };
 
+const modules = [
+  'math', 'puppy',
+];
 
 const KEYTYPES = {
   'width': tInt, 'height': tInt,
@@ -562,6 +567,18 @@ const KEYTYPES = {
 //const ty2 = this.check(tright(op, ty1), env, t['right'], out2);
 //return tbinary(env, t, ty1, out1.join(''), ty2, out1.join(''), out);
 const tCompr = union(tInt, tString);
+
+const opset: any = {
+  'and': '&&', 'or': '||',
+}
+
+const operator = (op: string) => {
+  const op2 = opset[op];
+  if (op2 !== undefined) {
+    return op2;
+  }
+  return op;
+}
 
 const tleftMap = {
   '+': union(tInt, tString, tListAny),
@@ -692,17 +709,6 @@ class Env {
     logs.push(elog);
   }
 
-  // public perror(t: ParseTree, elog: ErrorLog) {
-  //   this.log2(t, elog);
-  // }
-  // public pwarn(t: ParseTree, msg: string) {
-  //   this.plog('warning', t, msg);
-  // }
-
-  // public pinfo(t: ParseTree, msg: string) {
-  //   this.plog('info', t, msg);
-  // }
-
   public setInLoop() {
     this.set('@inloop', true);
     return true;
@@ -767,7 +773,7 @@ class Transpiler {
   }
 
   public conv(env: Env, t: ParseTree, out: string[]) {
-    console.log(t.toString());
+    //console.log(t.toString());
     try {
       return (this as any)[t.tag](env, t, out);
     }
@@ -869,7 +875,9 @@ class Transpiler {
         out.push(out2.join(''))
       }
       catch (e) {
-        console.log(e);
+        if (!(e instanceof PuppyError)) {
+          throw e;
+        }
       }
     }
     return tVoid;
@@ -1303,6 +1311,7 @@ const transpile = (s: string, errors?: []) => {
   const ts = new Transpiler();
   const out: string[] = [];
   ts.conv(env, t, out);
+  console.log('DEBUG: ERROR LOGS')
   console.log(env.get('@logs'));
   return out.join('')
 }
@@ -1317,7 +1326,7 @@ print("Hello", fillStyle='red')
 console.log(transpile(`
 def fibo(n):
   return n+1
-1
+print(fibo(1))
 `));
 
 console.log(transpile(`
@@ -1326,3 +1335,7 @@ if a == 1:
   a = 2
   a = 3
 `));
+
+// console.log(transpile(`
+// from math import *
+// `));
