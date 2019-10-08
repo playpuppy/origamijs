@@ -454,11 +454,13 @@ class Symbol {
   public code: string;
   public ty: Type;
   public isMatter: boolean = false;
+  public isMutable: boolean = false;
   public constructor(code: string, ty: Type, options?: any) {
     this.code = code;
     this.ty = ty.realType();
     if (options !== undefined) {
       this.isMatter = options.isMatter === undefined ? false : options.isMatter;
+      this.isMutable = options.isMutable == undefined ? false : options.isMutable;
     }
   }
   public isGlobal() {
