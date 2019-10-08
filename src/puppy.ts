@@ -584,7 +584,9 @@ const KEYTYPES = {
 const tCompr = union(tInt, tString);
 
 const opset: any = {
-  'and': '&&', 'or': '||',
+  'and': '&&', 'or': '||', 'not': '!',
+  '+=': '+', '-=': '-', '*=': '*', '//=': '//', '/=': '/',
+  '<<=': '<<', '>>=': '>>', '|=': '|', '&=': '&', '^=': '^',
 }
 
 const operator = (op: string) => {
@@ -653,6 +655,22 @@ const setpos = (s: string, pos: number, elog: ErrorLog) => {
   elog.row = r;
   elog.col = c;
   return elog;
+}
+
+const rangepos = (t: ParseTree) => {
+  const s = t.inputs;
+  const pos = t.spos;
+  const max = Math.min(pos + 1, s.length);
+  var r = 1;
+  var c = 0;
+  for (var i = 0; i < max; i += 1) {
+    if (s.charCodeAt(i) == 10) {
+      r += 1;
+      c = 0;
+    }
+    c += 1;
+  }
+  return `${r},${c},${t.epos - t.spos}`;
 }
 
 class Env {
@@ -781,9 +799,10 @@ class Env {
     var code = `puppy.vars['${name}']`
     if (this.inFunc()) {
       code = name;
-      return this.set(name, new Symbol(code, ty)) as Symbol;
     }
-    return this.set(name, new Symbol(code, ty)) as Symbol;
+    const symbol = new Symbol(code, ty);
+    symbol.isMutable = true;
+    return this.set(name, symbol) as Symbol;
   }
 
   public emitAutoYield(out: string[]) {
@@ -1105,20 +1124,17 @@ class Transpiler {
     if (left.tag === 'Name') {
       const name = left.tokenize();
       var symbol = env.get(name) as Symbol;
-      if (symbol === undefined) {
+      if (symbol === undefined || (env.inFunc() && symbol.isGlobal())) {
         const ty = new VarType(env, left);
         const out1: string[] = [];
         this.check(ty, env, t['right'], out1);
         symbol = env.declVar(name, ty);
-        if (symbol.isGlobal()) {
-          out.push(`${symbol.code} = ${out1.join('')}`);
-        }
-        else {
-          out.push(`var ${symbol.code} = ${out1.join('')}`);
-        }
+        const qual = symbol.isGlobal() ? '' : 'var ';
+        out.push(`${qual}${symbol.code} = ${out1.join('')}`);
         return tVoid;
       }
     }
+    t['left'].tag = `Set${t['left'].tag}`;
     const ty = this.conv(env, t['left'], out);
     out.push(' = ');
     this.check(ty, env, t['right'], out)
@@ -1132,6 +1148,29 @@ class Transpiler {
       env.perror(t, {
         type: 'error',
         key: 'UndefinedName',
+        subject: name,
+      });
+      return this.skip(env, t, out);
+    }
+    out.push(symbol.code);
+    return symbol.ty;
+  }
+
+  public SetName(env: Env, t: any, out: string[]) {
+    const name = t.tokenize();
+    const symbol = env.get(name) as Symbol;
+    if (symbol === undefined) {
+      env.perror(t, {
+        type: 'error',
+        key: 'UndefinedName',
+        subject: name,
+      });
+      return this.skip(env, t, out);
+    }
+    if (!symbol.isMutable) {
+      env.perror(t, {
+        type: 'error',
+        key: 'Immutable',
         subject: name,
       });
       return this.skip(env, t, out);
@@ -1155,7 +1194,7 @@ class Transpiler {
   }
 
   public Infix(env: Env, t: any, out: string[]) {
-    const op = t.tokenize('name');
+    const op = operator(t.tokenize('name'));
     const out1: string[] = [];
     const out2: string[] = [];
     const ty1 = this.check(tleft(op), env, t['left'], out1);
@@ -1254,6 +1293,17 @@ class Transpiler {
     return this.ApplySymbolExpr(env, t, symbol, t['recv'], out);
   }
 
+  //"[#SelfAssign left=[#Name 'a'] name=[# '+='] right=[#Int '1']]"
+  public SelfAssign(env: Env, t: any, out: string[]) {
+    const tag = t['left'].tag;
+    t['left'].tag = `Set${tag}`;
+    this.conv(env, t['left'], out);
+    out.push(' = ');
+    t['left'].tag = tag;
+    this.Infix(env, t, out);
+    return tVoid;
+  }
+
   public GetExpr(env: Env, t: any, out: string[]) {
     const recv = t.tokenize('recv');
     if (env.isModule(recv)) {
@@ -1261,25 +1311,48 @@ class Transpiler {
       out.push(symbol.code);
       return symbol.ty;
     }
-    const name = t.tokenize('name');
+    out.push('puppy.safeget(');
     this.check(tMatter, env, t['recv'], out);
-    out.push('.');
+    const name = t.tokenize('name');
     const ty = (KEYTYPES as any)[name] || new VarType(env, t['name']);
-    if (ty instanceof UnionType) {
-      return ty.ptype(0);
-    }
+    const pos = rangepos(t['name']);
+    out.push(`,'${name}',${pos})`);
     return ty;
   }
 
+  public SetGetExpr(env: Env, t: any, out: string[]) {
+    const recv = t.tokenize('recv');
+    if (env.isModule(recv)) {
+      env.perror(t, {
+        type: 'error',
+        key: 'Immutable',
+        subject: t.tokenize(),
+      });
+      return this.skip(env, t, out);
+    }
+    const name = t.tokenize('name');
+    this.check(tMatter, env, t['recv'], out);
+    out.push(`.${name}`);
+    const ty = (KEYTYPES as any)[name] || new VarType(env, t['name']);
+    return (ty instanceof UnionType) ? ty.ptype(0) : ty;
+  }
+
   public Index(env: Env, t: any, out: string[]) {
-    const ty = this.check(union(new ListType(new VarType(env, t)), tString), env, t['recv'], out)
+    out.push('puppy.safeindex(');
+    const ty = this.check(union(new ListType(new VarType(env, t)), tString), env, t['recv'], out);
+    out.push(',');
+    this.check(tInt, env, t['index'], out);
+    const pos = rangepos(t['index']);
+    out.push(`,${pos})`);
+    return (ty instanceof ListType) ? ty.ptype(0) : ty;
+  }
+
+  public SetIndex(env: Env, t: any, out: string[]) {
+    const ty = this.check(tListAny, env, t['recv'], out);
     out.push('[')
     this.check(tInt, env, t['index'], out)
     out.push(']')
-    if (ty instanceof ListType) {
-      return ty.ptype(0);
-    }
-    return ty;
+    return (ty instanceof ListType) ? ty.ptype(0) : ty;
   }
 
   public Data(env: Env, t: ParseTree, out: string[]) {
@@ -1408,6 +1481,7 @@ export type PuppyCode = {
   world: any;
   main: (puppy: any) => IterableIterator<number>;
   errors: ErrorLog[];
+  code: string;
 };
 
 export const compile = (s: Source): PuppyCode => {
@@ -1447,41 +1521,18 @@ ${out.join('')}
   return code as PuppyCode;
 }
 
-console.log(transpile(`
-x = 1
-x+1
-print("hello,world")
-print("Hello", fillStyle='red')
-`));
-
-console.log(transpile(`
-def fibo(n):
-  return n+1
-print(fibo(1))
-`));
-
-console.log(transpile(`
-a = 1
-b = 1
-if a == 1 and not b == 1:
-  #hoge
-  a = 2  
-  b = 3
-`));
-
-console.log(transpile(`
-from math import *
-x = tan(1.0)
-`));
-
-console.log(transpile(`
-import math as m
-m.sin(x)
-`));
-
-const s = {
-  source: 'print("hello,world")',
+export const utest = (s: string) => {
+  const src = { source: s };
+  const code = compile(src);
+  if (code.errors.length > 0) {
+    return code.errors[0].key;
+  }
+  const ss = code.code.split('\n');
+  return ss.length > 1 ? ss[ss.length - 2].trim() : '';
 }
 
-console.log(compile(s));
+console.log(transpile(`
+c = Circle(10,10)
+c.width+=1
+`));
 
