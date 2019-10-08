@@ -362,14 +362,14 @@ class VarType extends Type {
 }
 
 class OptionType extends Type {
-  private options: any;
+  public options: any;
   constructor(options: any) {
     super(false);
     this.options = options;
   }
 
   public toString() {
-    return '...';
+    return JSON.stringify(this.options);
   }
 
   public accept(ty: Type): boolean {
@@ -532,9 +532,22 @@ const import_puppy = {
   // 'World': Symbol('world', const, ts.MatterTypes),
 };
 
-const modules = [
-  'math', 'puppy',
-];
+const modules: any = {
+  'math': import_math,
+  'puppy': import_puppy,
+};
+
+const symbolPackageMap: any = {
+};
+
+const checkSymbolNames = () => {
+  for (const pkgname of Object.keys(modules)) {
+    for (const name of Object.keys(modules[pkgname])) {
+      symbolPackageMap[name] = pkgname;
+    }
+  }
+}
+checkSymbolNames();
 
 const KEYTYPES = {
   'width': tInt, 'height': tInt,
@@ -618,6 +631,7 @@ type ErrorLog = {
   column?: number;
   len?: number;
   subject?: string;
+  code?: string;
   request?: Type;
   given?: Type;
 };
@@ -696,6 +710,27 @@ class Env {
         this.vars[name] = pkg[name];
       }
     }
+  }
+
+  public setModule(name: string, options: any) {
+    this.set(name, new Symbol('undefined', new OptionType(options)));
+  }
+
+  public isModule(name: string) {
+    const s = this.get(name) as Symbol;
+    if (s !== undefined && s.code === 'undefined' && s.ty instanceof OptionType) {
+      return true;
+    }
+    return false;
+  }
+
+  public getModule(pkgname: string, name: string) {
+    const s = this.get(pkgname) as Symbol;
+    if (s !== undefined && s.code === 'undefined' && s.ty instanceof OptionType) {
+      const options = (s.ty as OptionType).options;
+      return options[name];
+    }
+    return undefined;
   }
 
   public perror(t: ParseTree, elog: ErrorLog) {
@@ -794,10 +829,10 @@ class Transpiler {
     }
   }
 
-  public skip(env: Env, t: ParseTree, out: string[]) {
+  public skip(env: Env, t: ParseTree, out: string[]): Type {
     throw new PuppyError();
-    // out.push('undefined');
-    // return tAny;
+    out.push('undefined');
+    return tAny;
   }
 
   public check(req: Type, env: Env, t: ParseTree, out: string[], elog?: ErrorLog) {
@@ -862,6 +897,35 @@ class Transpiler {
       type: 'error',
       key: 'SyntaxError',
     });
+    return tVoid;
+  }
+
+  public FromDecl(env: Env, t: ParseTree, out: string[]) {
+    const name = t.tokenize('name');
+    const pkg = modules[name];
+    if (pkg === undefined) {
+      env.perror(t.get('name'), {
+        type: 'error',
+        key: 'UnknownPackageName',
+      });
+      return this.skip(env, t, out);
+    }
+    env.from_import(pkg); // FIXME
+    return tVoid;
+  }
+
+  public ImportDecl(env: Env, t: ParseTree, out: string[]) {
+    const name = t.tokenize('name');
+    const alias = t.tokenize('alias', name);
+    const pkg = modules[name];
+    if (pkg === undefined) {
+      env.perror(t.get('name'), {
+        type: 'error',
+        key: 'UnknownPackageName',
+      });
+      return this.skip(env, t, out);
+    }
+    env.setModule(alias, pkg);
     return tVoid;
   }
 
@@ -1074,6 +1138,20 @@ class Transpiler {
     return symbol.ty;
   }
 
+  public And(env: Env, t: any, out: string[]) {
+    this.check(tBool, env, t['left'], out);
+    out.push(' && ');
+    this.check(tBool, env, t['right'], out);
+    return tBool;
+  }
+
+  public Or(env: Env, t: any, out: string[]) {
+    this.check(tBool, env, t['left'], out);
+    out.push(' || ');
+    this.check(tBool, env, t['right'], out);
+    return tBool;
+  }
+
   public Infix(env: Env, t: any, out: string[]) {
     const op = t.tokenize('name');
     const out1: string[] = [];
@@ -1099,20 +1177,41 @@ class Transpiler {
     }
   }
 
-  public ApplyExpr(env: Env, t: any, out: string[]) {
+  public ApplyExpr(env: Env, t: any, out: string[]): Type {
     const name = t.tokenize('name');
     const symbol = env.get(name) as Symbol;
+    if (symbol === undefined) {
+      const pkgname = symbolPackageMap[name];
+      if (pkgname !== undefined) {
+        console.log(`importing ${pkgname} ...`);
+        env.from_import(modules[pkgname]);
+        env.perror(t['name'], {
+          type: 'info',
+          key: 'InferredPackage',
+          subject: pkgname,
+          code: `from ${pkgname} import *`,
+        });
+        return this.ApplySymbolExpr(env, t, env.get(name) as Symbol, undefined, out); // Again
+      }
+    }
+    return this.ApplySymbolExpr(env, t, symbol, undefined, out);
+  }
+
+  private ApplySymbolExpr(env: Env, t: any, symbol: Symbol, recv: ParseTree | undefined, out: string[]): Type {
     if (symbol === undefined) {
       env.perror(t['name'], {
         type: 'error',
         key: 'UnknownName',
-        subject: name,
+        subject: t['name'].tokenize(),
       });
       return this.skip(env, t, out);
     }
     out.push(symbol.code)
     out.push('(')
     const args = t['params'].subs();
+    if (recv !== undefined) {
+      args.unshift(recv);
+    }
     const funcType = symbol.ty;
     for (var i = 0; i < args.length; i += 1) {
       if (!(i < funcType.psize())) {
@@ -1138,49 +1237,29 @@ class Transpiler {
       }
     }
     out.push(')');
-    // if name == 'puppy.print':
-    //   env['@@yield'] = trace(env, t);
+    env.foundFunc(t, symbol);
     return funcType.rtype();
   }
 
   public MethodExpr(env: Env, t: any, out: string[]) {
-    const name = `.${t.tokenize('name')}`;
-    const symbol = env.get(name);
-    if (symbol === undefined) {
-      env.perror(t['name'], {
-        type: 'error',
-        key: 'UnknownName',
-        subject: name,
-      });
-      return this.skip(env, t, out);
+    const recv = t.tokenize('recv');
+    if (env.isModule(recv)) {
+      const symbol = env.getModule(recv, t.tokenize('name'));
+      return this.ApplySymbolExpr(env, t, symbol, undefined, out);
     }
-    const funcType = symbol.ty;
-    out.push(symbol.name);
-    const args = t['params'].subs();
-    args.unshift(t['recv']);
-    out.push('(')
-    for (var i = 0; i < args.length; i += 1) {
-      if (!(i < funcType.psize())) {
-        //env.pwarn(args, '冗長なパラメータです');
-        break;
-      }
-      if (i > 0) {
-        out.push(',');
-      }
-      const ty = funcType.ptype(i);
-      this.check(ty, env, args[i], out);
-    }
-    out.push(')');
-    return funcType.rtype();
+    const methodname = `.${t.tokenize('name')}`;
+    const symbol = env.get(methodname);
+    return this.ApplySymbolExpr(env, t, symbol, t['recv'], out);
   }
 
   public GetExpr(env: Env, t: any, out: string[]) {
+    const recv = t.tokenize('recv');
+    if (env.isModule(recv)) {
+      const symbol = env.getModule(recv, t.tokenize('name'));
+      out.push(symbol.code);
+      return symbol.ty;
+    }
     const name = t.tokenize('name');
-    // const pkgname = t.tokenize('recv');
-    // const pkg = env.get(pkgname);
-    // if (pkg !== undefined && !(pkg instanceof Symbol)) {
-    //   pkg[name];
-    // }
     this.check(tMatter, env, t['recv'], out);
     out.push('.');
     const ty = (KEYTYPES as any)[name] || new VarType(env, t['name']);
@@ -1300,6 +1379,7 @@ class Transpiler {
     out.push(t.tokenize());  // FIXME
     return tString;
   }
+
 }
 
 const parser = generate('Source');
@@ -1312,6 +1392,7 @@ const transpile = (s: string, errors?: []) => {
   const out: string[] = [];
   ts.conv(env, t, out);
   console.log('DEBUG: ERROR LOGS')
+  //console.log(JSON.stringify(env.get('@logs')));
   console.log(env.get('@logs'));
   return out.join('')
 }
@@ -1331,11 +1412,18 @@ print(fibo(1))
 
 console.log(transpile(`
 a = 1
-if a == 1:
+b = 1
+if a == 1 and not b == 1:
   a = 2
-  a = 3
+  b = 3
 `));
 
-// console.log(transpile(`
-// from math import *
-// `));
+console.log(transpile(`
+from math import *
+x = tan(1.0)
+`));
+
+console.log(transpile(`
+import math as m
+m.sin(1.0)
+`));
