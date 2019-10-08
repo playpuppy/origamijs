@@ -630,7 +630,7 @@ type ErrorLog = {
   key: string;
   pos?: number;
   row?: number;
-  column?: number;
+  col?: number;
   len?: number;
   subject?: string;
   code?: string;
@@ -651,7 +651,7 @@ const setpos = (s: string, pos: number, elog: ErrorLog) => {
   }
   elog.pos = pos;
   elog.row = r;
-  elog.column = c;
+  elog.col = c;
   return elog;
 }
 
@@ -1410,7 +1410,7 @@ export type PuppyCode = {
   errors: ErrorLog[];
 };
 
-const compile = (s: Source): PuppyCode => {
+export const compile = (s: Source): PuppyCode => {
   //const start = performance.now();
   const t = parser(s.source);
   const env = new Env();
@@ -1422,7 +1422,7 @@ const compile = (s: Source): PuppyCode => {
   const main = `
 return {
   main: async function*(puppy) {
-\tconsT lib = puppy.lib;
+\tconst lib = puppy.lib;
 \tconst vars = puppy.vars;
 ${out.join('')}
   },
@@ -1443,11 +1443,9 @@ ${out.join('')}
   code['tree'] = t; // 
   code['code'] = jscode;
   code['errors'] = env.get('@logs');
-  code['test'] = 0;
   //code['time'] = end - start;
   return code as PuppyCode;
 }
-
 
 console.log(transpile(`
 x = 1
@@ -1485,6 +1483,5 @@ const s = {
   source: 'print("hello,world")',
 }
 
-//console.log(Object.assign(compile(s), { test: 1 }));
-
 console.log(compile(s));
+
