@@ -1386,7 +1386,7 @@ class Transpiler {
 
 const parser = generate('Source');
 
-const transpile = (s: string, errors?: []) => {
+const transpile = (s: string) => {
   const t = parser(s);
   const env = new Env();
   env.from_import(import_python);
@@ -1398,6 +1398,56 @@ const transpile = (s: string, errors?: []) => {
   console.log(env.get('@logs'));
   return out.join('')
 }
+
+export type Source = {
+  source: string;
+  lang?: string;
+};
+
+export type PuppyCode = {
+  world: any;
+  main: (puppy: any) => IterableIterator<number>;
+  errors: ErrorLog[];
+};
+
+const compile = (s: Source): PuppyCode => {
+  //const start = performance.now();
+  const t = parser(s.source);
+  const env = new Env();
+  env.from_import(import_python);
+  const ts = new Transpiler();
+  const out: string[] = [];
+  ts.conv(env, t, out);
+  const jscode = out.join('');
+  const main = `
+return {
+  main: async function*(puppy) {
+\tconsT lib = puppy.lib;
+\tconst vars = puppy.vars;
+${out.join('')}
+  },
+}`
+  var code: any = {};
+  try {
+    code = (new Function(main))();
+  }
+  catch (e) {
+    env.perror(t, {
+      type: 'error',
+      key: 'CompileError',
+      subject: e.toString(),
+    })
+  }
+  //const end = performance.now();
+  code['world'] = {};
+  code['tree'] = t; // 
+  code['code'] = jscode;
+  code['errors'] = env.get('@logs');
+  code['test'] = 0;
+  //code['time'] = end - start;
+  return code as PuppyCode;
+}
+
 
 console.log(transpile(`
 x = 1
@@ -1416,7 +1466,8 @@ console.log(transpile(`
 a = 1
 b = 1
 if a == 1 and not b == 1:
-  a = 2
+  #hoge
+  a = 2  
   b = 3
 `));
 
@@ -1427,5 +1478,13 @@ x = tan(1.0)
 
 console.log(transpile(`
 import math as m
-m.sin(1.0)
+m.sin(x)
 `));
+
+const s = {
+  source: 'print("hello,world")',
+}
+
+//console.log(Object.assign(compile(s), { test: 1 }));
+
+console.log(compile(s));
