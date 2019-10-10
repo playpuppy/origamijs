@@ -1,4 +1,4 @@
-import { generate, ParseTree } from './puppy3-parser';
+import { generate, ParseTree } from './puppy-parser';
 
 const INDENT = '\t';
 
@@ -24,12 +24,12 @@ class Type {
     return this;
   }
 
-  public equals(ty: Type, update: boolean): boolean {
-    return false;
-  }
+  // public equals(ty: Type, update: boolean): boolean {
+  //   return false;
+  // }
 
   public accept(ty: Type, update: boolean): boolean {
-    return this.equals(ty, update);
+    return false;
   }
 
   public realType(): Type {
@@ -37,6 +37,10 @@ class Type {
   }
 
   public isPattern() {
+    return false;
+  }
+
+  public hasAlpha(): boolean {
     return false;
   }
 
@@ -58,7 +62,7 @@ class BaseType extends Type {
     return this.name;
   }
 
-  public equals(ty: Type, update: boolean): boolean {
+  public accept(ty: Type, update: boolean): boolean {
     const v = ty.realType();
     if (v instanceof BaseType) {
       return this.name === v.name;
@@ -73,8 +77,12 @@ class BaseType extends Type {
     return (this.name === 'a' || this.name === 'b');
   }
 
+  public hasAlpha(): boolean {
+    return (this.name === 'a' || this.name === 'b');
+  }
+
   public toVarType(map: any) {
-    if (this.isPattern()) {
+    if (this.hasAlpha()) {
       const ty = map[this.name];
       if (ty === undefined) {
         map[this.name] = new VarType(map.env, map.t);
@@ -118,9 +126,14 @@ class AnyType extends BaseType {
     return true;
   }
 
+  public hasAlpha() {
+    return true;
+  }
+
   public toVarType(map: any) {
     return new VarType(map.env, map.t);
   }
+
 }
 
 class FuncType extends Type {
@@ -153,11 +166,11 @@ class FuncType extends Type {
     return this.types[index + 1];
   }
 
-  public equals(ty: Type, update: boolean): boolean {
+  public accept(ty: Type, update: boolean): boolean {
     const v = ty.realType();
     if (v instanceof FuncType && this.psize() == v.psize()) {
       for (var i = 0; i < this.types.length; i += 1) {
-        if (!this.types[i].equals(v.types[i], update)) {
+        if (!this.types[i].accept(v.types[i], update)) {
           return false;
         }
         return true;
@@ -176,8 +189,15 @@ class FuncType extends Type {
     return false;
   }
 
+  public hasAlpha(): boolean {
+    for (const ty of this.types) {
+      if (ty.hasAlpha()) return true;
+    }
+    return false;
+  }
+
   public toVarType(map: any) {
-    if (this.isPattern()) {
+    if (this.hasAlpha()) {
       const v = [];
       for (const ty of this.types) {
         v.push(ty.toVarType(map));
@@ -196,7 +216,7 @@ class ListType extends Type {
   }
 
   public toString() {
-    return `List${this.param.toString()}`;
+    return `List[${this.param.toString()}]`;
   }
 
   public psize() {
@@ -220,18 +240,7 @@ class ListType extends Type {
       if (this.param == tAny) {
         return true;
       }
-      return this.param.equals(v.param, update);
-    }
-    if (v instanceof VarType) {
-      return v.must(this, update);
-    }
-    return false;
-  }
-
-  public equals(ty: Type, update: boolean): boolean {
-    const v = ty.realType();
-    if (v instanceof ListType) {
-      return this.param.equals(v.param, update);
+      return this.param.accept(v.param, update);
     }
     if (v instanceof VarType) {
       return v.must(this, update);
@@ -243,14 +252,85 @@ class ListType extends Type {
     return this.param.isPattern();
   }
 
+  public hasAlpha(): boolean {
+    return this.param.hasAlpha();
+  }
+
   public toVarType(map: any) {
-    if (this.isPattern()) {
+    if (this.hasAlpha()) {
       return new ListType(this.param.toVarType(map));
     }
     return this;
   }
-
 }
+
+class UnionType extends Type {
+  private types: Type[];
+  constructor(...types: Type[]) {
+    super(false);
+    this.types = types;
+  }
+
+  public toString() {
+    const ss = []
+    for (var i = 0; i < this.types.length; i += 1) {
+      if (i > 0) {
+        ss.push('|');
+      }
+      ss.push(this.types[i].toString())
+    }
+    return ss.join('');
+  }
+  public psize() {
+    return this.types.length;
+  }
+
+  public ptype(index: number) {
+    return this.types[index];
+  }
+
+  public accept(ty: Type, update: boolean): boolean {
+    for (const ty0 of this.types) {
+      if (ty0.accept(ty, false)) {
+        return true;
+      }
+    }
+    console.log(`FAIL ${ty} ${this.toString()}`)
+    return false;
+  }
+
+  public isPattern() {
+    return true;
+  }
+
+  public hasAlpha(): boolean {
+    for (const ty of this.types) {
+      if (ty.hasAlpha()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  public toVarType(map: any) {
+    if (this.hasAlpha()) {
+      const ts: Type[] = [];
+      for (const ty of this.types) {
+        ts.push(ty.toVarType(map));
+      }
+      return new UnionType(...ts);
+    }
+    return this;
+  }
+}
+
+const union = (...types: Type[]) => {
+  if (types.length === 1) {
+    return types[0];
+  }
+  return new UnionType(...types);
+}
+
 
 const tAny = new AnyType();
 const tVoid = new VoidType();
@@ -322,17 +402,12 @@ class VarType extends Type {
     return (v instanceof Type) ? v : this;
   }
 
-  public equals(ty: Type, update: boolean): boolean {
+  public accept(ty: Type, update: boolean): boolean {
     var v = this.varMap[this.varid];
-    if (v instanceof Type) {
-      return v.equals(ty, update);
+    if (v instanceof Type && v !== this) {
+      return v.accept(ty, update);
     }
-    v = ty.realType();
-    if (update) {
-      this.varMap[this.varid] = v;
-      return true;
-    }
-    return this === v;
+    return this.must(ty.realType(), update);
   }
 
   public must(ty: Type, update: boolean): boolean {
@@ -352,13 +427,18 @@ class VarType extends Type {
       if (!v1.isPattern()) {
         const u = this.varMap[this.varid] as number[];
         for (const id of u) {
-          this.varMap[id] = ty;
+          this.varMap[id] = v1;
         }
-        this.varMap[this.varid] = ty;
+        this.varMap[this.varid] = v1;
       }
     }
     return true;
   }
+
+  public hasAlpha(): boolean {
+    return false;
+  }
+
 }
 
 class OptionType extends Type {
@@ -388,53 +468,7 @@ class OptionType extends Type {
     return false;
   }
 
-  public toVarType(map: any) {
-    return this;
-  }
-}
-
-class UnionType extends Type {
-  private types: Type[];
-  constructor(...types: Type[]) {
-    super(false);
-    this.types = types;
-  }
-
-  public toString() {
-    const ss = []
-    for (var i = 0; i < this.types.length; i += 1) {
-      if (i > 1) {
-        ss.push('|');
-      }
-      ss.push(this.types[i].toString())
-    }
-    return ss.join('');
-  }
-  public psize() {
-    return this.types.length;
-  }
-  public ptype(index: number) {
-    return this.types[index];
-  }
-
-  public accept(ty: Type, update: boolean): boolean {
-    const v = ty.realType();
-    if (v instanceof VarType) {
-      return true;
-    }
-    for (const t of this.types) {
-      if (t.accept(v, false)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  public equals(ty: Type, update: boolean): boolean {
-    return false;
-  }
-
-  public isPattern() {
+  public hasAlpha(): boolean {
     return false;
   }
 
@@ -443,12 +477,6 @@ class UnionType extends Type {
   }
 }
 
-const union = (...types: Type[]) => {
-  if (types.length === 1) {
-    return types[0];
-  }
-  return new UnionType(...types);
-}
 
 class Symbol {
   public code: string;
@@ -464,7 +492,7 @@ class Symbol {
     }
   }
   public isGlobal() {
-    return this.code.indexOf('puppy.vars[') == 0;
+    return this.code.indexOf('vars[') == 0;
   }
 }
 
@@ -495,48 +523,51 @@ const import_python = {
   'print': new Symbol('puppy.print', new FuncType(tVoid, tAny, tOption)),
 
   //# 返値, 引数..None はなんでもいい
-  'len': new Symbol('puppy.len', new FuncType(tInt, union(tString, tListA))),
+  'len': new Symbol('lib.len', new FuncType(tInt, union(tString, tListA))),
   //可変長引数
-  'range': new Symbol('puppy.range', new FuncType(tListInt, tInt, tInt_, tInt_)),
+  'range': new Symbol('lib.range', new FuncType(tListInt, tInt, tInt_, tInt_)),
   //append
-  '.append': new Symbol('puppy.append', new FuncType(tVoid, tListA, tA)),
+  '.append': new Symbol('lib.append', new FuncType(tVoid, tListA, tA)),
 
   // 変換
-  'int': new Symbol('puppy.int', new FuncType(tInt, union(tBool, tString, tInt))),
-  'float': new Symbol('puppy.float', new FuncType(tFloat, union(tBool, tString, tInt))),
-  'str': new Symbol('puppy.str', new FuncType(tString, tAny)),
-  'random': new Symbol('Math.random', new FuncType(tInt)),
-
-  'Circle': new Symbol('Circle', tFuncShape),
-  // 'Rectangle': Symbol('Rectangle', const, ts.MatterTypes),
-  // 'Polygon': Symbol('Polygon', const, ts.MatterTypes),
-  // 'Label': Symbol('Label', const, ts.MatterTypes),
-  // 'Drop': Symbol('Drop', const, ts.MatterTypes),
-  // 'Newton': Symbol('Pendulum', const, ts.MatterTypes),
-  // 'Ball': Symbol('Circle', const, (ts.Matter, tInt, tInt, { 'restitution': 1.0 })),
-  // 'Block': Symbol('Rectangle', const, (ts.Matter, tInt, tInt, { 'isStatic': 'true' })),
+  'int': new Symbol('lib.int', new FuncType(tInt, union(tBool, tString, tInt))),
+  'float': new Symbol('lib.float', new FuncType(tFloat, union(tBool, tString, tInt))),
+  'str': new Symbol('lib.str', new FuncType(tString, tAny)),
+  //'random': new Symbol('Math.random', new FuncType(tInt)),
 }
 
-const import_puppy = {
-  // # 物体メソッド
-  // '.setPosition': Symbol('puppy.setPosition', const, (tVoid, ts.Matter, tInt, tInt)),
-  // '.applyForce': Symbol('puppy.applyForce', const, (tVoid, ts.Matter, tInt, tInt, tInt, tInt)),
-  // '.rotate': Symbol('puppy.rotate', const, (tVoid, ts.Matter, tInt, tInt_, tInt_)),
-  // '.scale': Symbol('puppy.scale', const, (tVoid, ts.Matter, tInt, tInt, tInt_, tInt_)),
-  // '.setAngle': Symbol('puppy.setAngle', const, (tVoid, ts.Matter, tInt)),
-  // '.setAngularVelocity': Symbol('puppy.setAngularVelocity', const, (tVoid, ts.Matter, tInt)),
-  // '.setDensity': Symbol('puppy.setDensity', const, (tVoid, ts.Matter, tInt)),
-  // '.setMass': Symbol('puppy.setMass', const, (tVoid, ts.Matter, tInt)),
-  // '.setStatic': Symbol('puppy.setStatic', const, (tVoid, ts.Matter, tBool)),
-  // '.setVelocity': Symbol('puppy.setVelocity', const, (tVoid, ts.Matter, tInt)),
+const import_random = {
+  'random': new Symbol('Math.random', new FuncType(tInt)),
+}
 
+const import_matterjs = {
   // # クラス
-  // 'World': Symbol('world', const, ts.MatterTypes),
+  'World': new Symbol('puppy.World', tFuncShape),
+  'Circle': new Symbol('puppy.Circle', tFuncShape),
+  'Rectangle': new Symbol('puppy.Rectangle', tFuncShape),
+  'Polygon': new Symbol('puppy.Polygon', tFuncShape),
+  'Label': new Symbol('puppy.Label', tFuncShape),
+  // 'Ball': new Symbol('puppy.Circle', tFuncShape),
+  // 'Block': new Symbol('puppy.Ball', tFuncShape),
+
+  // # 物体メソッド
+  '.setPosition': new Symbol('lib.setPosition', new FuncType(tVoid, tMatter, tInt, tInt)),
+  '.applyForce': new Symbol('lib.applyForce', new FuncType(tVoid, tMatter, tInt, tInt, tInt, tInt)),
+  '.rotate': new Symbol('lib.rotate', new FuncType(tVoid, tMatter, tInt, tInt_, tInt_)),
+  '.scale': new Symbol('lib.scale', new FuncType(tVoid, tMatter, tInt, tInt, tInt_, tInt_)),
+  '.setAngle': new Symbol('lib.setAngle', new FuncType(tVoid, tMatter, tInt)),
+  '.setAngularVelocity': new Symbol('lib.setAngularVelocity', new FuncType(tVoid, tMatter, tInt)),
+  '.setDensity': new Symbol('lib.setDensity', new FuncType(tVoid, tMatter, tInt)),
+  '.setMass': new Symbol('lib.setMass', new FuncType(tVoid, tMatter, tInt)),
+  '.setStatic': new Symbol('lib.setStatic', new FuncType(tVoid, tMatter, tBool)),
+  '.setVelocity': new Symbol('lib.setVelocity', new FuncType(tVoid, tMatter, tInt)),
+
 };
 
 const modules: any = {
   'math': import_math,
-  'puppy': import_puppy,
+  'random': import_random,
+  'matterjs': import_matterjs,
 };
 
 const symbolPackageMap: any = {
@@ -628,7 +659,7 @@ const tright = (op: string, ty: Type) => {
 }
 
 type ErrorLog = {
-  type: string;
+  type?: string;
   key: string;
   pos?: number;
   row?: number;
@@ -657,21 +688,7 @@ const setpos = (s: string, pos: number, elog: ErrorLog) => {
   return elog;
 }
 
-const rangepos = (t: ParseTree) => {
-  const s = t.inputs;
-  const pos = t.spos;
-  const max = Math.min(pos + 1, s.length);
-  var r = 1;
-  var c = 0;
-  for (var i = 0; i < max; i += 1) {
-    if (s.charCodeAt(i) == 10) {
-      r += 1;
-      c = 0;
-    }
-    c += 1;
-  }
-  return `${r},${c},${t.epos - t.spos}`;
-}
+
 
 class Env {
   private root: Env;
@@ -685,6 +702,7 @@ class Env {
       this.parent = null;
       this.vars['@varmap'] = [];
       this.vars['@logs'] = [];
+      this.vars['@trace'] = [];
       this.vars['@indent'] = INDENT;
     }
     else {
@@ -755,13 +773,27 @@ class Env {
 
   public perror(t: ParseTree, elog: ErrorLog) {
     const logs = this.root.vars['@logs'];
+    if (elog.type === undefined) {
+      elog.type = 'error';
+    }
     if (elog.pos === undefined) {
-      elog = setpos(t.inputs, t.spos, elog);
+      const pos = t.begin();
+      elog.pos = pos[0];
+      elog.row = pos[1];
+      elog.col = pos[2];
     }
     if (elog.len === undefined) {
       elog.len = t.epos - t.spos;
     }
     logs.push(elog);
+  }
+
+  public trace(t: ParseTree) {
+    const trace: number[][] = this.getroot('@trace');
+    const id = trace.length;
+    const pos = t.begin()
+    trace.push([pos[0], pos[1], pos[2], t.epos - t.spos])
+    return `,puppy,${id}`;
   }
 
   public setInLoop() {
@@ -796,7 +828,7 @@ class Env {
   }
 
   public declVar(name: string, ty: Type) {
-    var code = `puppy.vars['${name}']`
+    var code = `vars['${name}']`
     if (this.inFunc()) {
       code = name;
     }
@@ -838,7 +870,7 @@ class Transpiler {
         throw e;
       }
       if ((this as any)[t.tag] === undefined) {
-        console.log(e);
+        //console.log(e);
         env.perror(t, {
           type: 'error',
           key: 'UndefinedParseTree',
@@ -878,25 +910,44 @@ class Transpiler {
       out.push(`${left} ${op}= ${right}`);
       return tBool;
     }
+    ty1 = ty1.realType();
+    ty2 = ty2.realType();
+    if (op === '+') {
+      if (ty1 === tInt && ty2 === tInt) {
+        out.push(`(${left} + ${right})`);
+        return tInt;
+      }
+      if (ty1.accept(ty2, true)) {
+        out.push(`lib.anyAdd(${left},${right})`);
+        return ty1;
+      }
+      env.perror(t, {
+        key: 'BinaryTypeError',
+        subject: op,
+        request: ty1,
+        given: ty2,
+      });
+      return this.skip(env, t, out);
+    }
     if (op === '*') {
-      if (tInt.equals(ty1, false) && tInt.equals(ty2, false)) {
+      if (ty1 === tInt && ty2 === tInt) {
         out.push(`(${left} * ${right})`);
         return tInt;
       }
-      if (!tInt.equals(ty1, false)) {
-        out.push(`puppy.mul(${left},${right})`);
-        return ty1;
-      }
-      if (tInt.equals(ty1, false)) {
-        out.push(`puppy.mul(${left},${right})`);
-        return ty2;
-      }
+      out.push(`lib.anyMul(${left},${right})`);
+      if (ty1 === tInt || tListAny.accept(ty2, false)) return ty2;
+      if (ty2 === tInt || tListAny.accept(ty1, false)) return ty1;
+      return ty1;
+    }
+    if (op === '//') {
+      out.push(`((${left}/${right})|0)`);
+      return tInt;
     }
     if (op === '**') {
       out.push(`Math.pow(${left},${right})`);
       return tInt;
     }
-    if (ty1.equals(ty2, true)) {
+    if (ty1.accept(ty2, true)) {
       out.push(`(${left} ${op} ${right})`);
       if ((tleftMap as any)[op] === tCompr) {
         return tBool;
@@ -904,7 +955,6 @@ class Transpiler {
       return ty1;
     }
     env.perror(t, {
-      type: 'error',
       key: 'BinaryTypeError',
       subject: op,
       request: ty1,
@@ -979,8 +1029,19 @@ class Transpiler {
       this.conv(env, subtree, out);
       env.emitAutoYield(out);
     }
-    out.push(indent + '}\n')
+    out.push(indent + '}')
     return tVoid;
+  }
+
+  public IfExpr(env: Env, t: any, out: string[]) {
+    out.push('((');
+    this.check(tBool, env, t['cond'], out);
+    out.push(') ? (');
+    const ty = this.conv(env, t['then'], out);
+    out.push(') : (');
+    this.check(ty, env, t['else'], out);
+    out.push('))');
+    return ty;
   }
 
   public IfStmt(env: Env, t: any, out: string[]) {
@@ -1041,6 +1102,7 @@ class Transpiler {
     if (!funcData['hasReturn']) {
       types[0].accept(tVoid, true);
     }
+    console.log(`DEFINED ${name} :: ${funcType}`)
     return tVoid;
   }
 
@@ -1193,6 +1255,13 @@ class Transpiler {
     return tBool;
   }
 
+  public Not(env: Env, t: any, out: string[]) {
+    out.push('!(');
+    this.check(tBool, env, t[0], out);
+    out.push(')');
+    return tBool;
+  }
+
   public Infix(env: Env, t: any, out: string[]) {
     const op = operator(t.tokenize('name'));
     const out1: string[] = [];
@@ -1253,7 +1322,20 @@ class Transpiler {
     if (recv !== undefined) {
       args.unshift(recv);
     }
-    const funcType = symbol.ty;
+    var funcType = symbol.ty;
+    if (!(funcType instanceof FuncType)) {
+      env.perror(t['name'], {
+        type: 'error',
+        key: 'NotFunction',
+        subject: t['name'].tokenize(),
+      });
+      return this.skip(env, t, out);
+    }
+    if (funcType.hasAlpha()) {
+      funcType = funcType.toVarType({ env, ref: t });
+      //console.log(funcType.toString());
+    }
+
     for (var i = 0; i < args.length; i += 1) {
       if (!(i < funcType.psize())) {
         env.perror(args[i], {
@@ -1311,12 +1393,11 @@ class Transpiler {
       out.push(symbol.code);
       return symbol.ty;
     }
-    out.push('puppy.safeget(');
+    out.push('lib.get(');
     this.check(tMatter, env, t['recv'], out);
     const name = t.tokenize('name');
     const ty = (KEYTYPES as any)[name] || new VarType(env, t['name']);
-    const pos = rangepos(t['name']);
-    out.push(`,'${name}',${pos})`);
+    out.push(`,'${name}'${env.trace(t['name'])})`);
     return ty;
   }
 
@@ -1337,17 +1418,16 @@ class Transpiler {
     return (ty instanceof UnionType) ? ty.ptype(0) : ty;
   }
 
-  public Index(env: Env, t: any, out: string[]) {
-    out.push('puppy.safeindex(');
+  public IndexExpr(env: Env, t: any, out: string[]) {
+    out.push('lib.index(');
     const ty = this.check(union(new ListType(new VarType(env, t)), tString), env, t['recv'], out);
     out.push(',');
     this.check(tInt, env, t['index'], out);
-    const pos = rangepos(t['index']);
-    out.push(`,${pos})`);
+    out.push(`${env.trace(t['index'])})`);
     return (ty instanceof ListType) ? ty.ptype(0) : ty;
   }
 
-  public SetIndex(env: Env, t: any, out: string[]) {
+  public SetIndexExpr(env: Env, t: any, out: string[]) {
     const ty = this.check(tListAny, env, t['recv'], out);
     out.push('[')
     this.check(tInt, env, t['index'], out)
@@ -1420,6 +1500,32 @@ class Transpiler {
     return new ListType(ty);
   }
 
+  public Format(env: Env, t: ParseTree, out: string[]) {
+    var c = 0;
+    out.push('(');
+    for (const e of t.subs()) {
+      if (c > 0) {
+        out.push('+')
+      }
+      if (e.tag === 'StringPart') {
+        out.push(`'${e.tokenize()}'`)
+      }
+      else {
+        const out2: string[] = [];
+        const ty = this.conv(env, e, out2);
+        if (ty === tString) {
+          out.push(out2.join(''));
+        }
+        else {
+          out.push(`lib.str(${out2.join('')})`);
+        }
+      }
+      c++;
+    }
+    out.push(')');
+    return tString;
+  }
+
   public TrueExpr(env: Env, t: ParseTree, out: string[]) {
     out.push('true');
     return tBool;
@@ -1455,6 +1561,12 @@ class Transpiler {
     return tString;
   }
 
+  public MultiString(env: Env, t: ParseTree, out: string[]) {
+    out.push(JSON.stringify(JSON.parse(t.tokenize())));
+    return tString;
+  }
+
+
 }
 
 const parser = generate('Source');
@@ -1466,7 +1578,7 @@ const transpile = (s: string) => {
   const ts = new Transpiler();
   const out: string[] = [];
   ts.conv(env, t, out);
-  console.log('DEBUG: ERROR LOGS')
+  //console.log('DEBUG: ERROR LOGS')
   //console.log(JSON.stringify(env.get('@logs')));
   console.log(env.get('@logs'));
   return out.join('')
@@ -1498,7 +1610,7 @@ return {
   main: async function*(puppy) {
 \tconst lib = puppy.lib;
 \tconst vars = puppy.vars;
-${out.join('')}
+${jscode}
   },
 }`
   var code: any = {};
@@ -1528,11 +1640,34 @@ export const utest = (s: string) => {
     return code.errors[0].key;
   }
   const ss = code.code.split('\n');
-  return ss.length > 1 ? ss[ss.length - 2].trim() : '';
+  if (ss.length > 1) {
+    const s = ss[ss.length - 2].trim();
+    return s === '}' ? ss[ss.length - 3].trim() : s;
+  }
+  return '';
 }
 
-console.log(transpile(`
-c = Circle(10,10)
-c.width+=1
-`));
+// console.log(transpile(`
+// '''
+// This is a apple.
+// I'm from Chiba.
+// '''
+// `));
 
+
+// console.log(transpile(`
+// def fibo(n):
+// 	if n < 3:
+// 	  return 1
+// 	return fibo(n-1)+fibo(n-2)
+// `));
+
+// console.log(transpile(`
+// def f(x,y):
+//   return x*y;
+// `));
+
+// console.log(transpile(`
+// def f(x,y):
+//   return x//y;
+// `));
