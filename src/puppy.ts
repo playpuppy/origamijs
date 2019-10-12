@@ -520,7 +520,7 @@ const import_python = {
   // 'math.': IMPORT_MATH,
   // 'random.': IMPORT_RANDOM,
   'input': new Symbol('await puppy.input', new FuncType(tString, tString_)),
-  'print': new Symbol('puppy.print', new FuncType(tVoid, tAny, tOption)),
+  'print': new Symbol('puppy.print', new FuncType(tVoid, tAny, tOption), { isMatter: true }),
 
   //# 返値, 引数..None はなんでもいい
   'len': new Symbol('lib.len', new FuncType(tInt, union(tString, tListA))),
@@ -542,11 +542,11 @@ const import_random = {
 
 const import_matterjs = {
   // # クラス
-  'World': new Symbol('puppy.World', tFuncShape),
-  'Circle': new Symbol('puppy.Circle', tFuncShape),
-  'Rectangle': new Symbol('puppy.Rectangle', tFuncShape),
-  'Polygon': new Symbol('puppy.Polygon', tFuncShape),
-  'Label': new Symbol('puppy.Label', tFuncShape),
+  'World': new Symbol('puppy.World', tFuncShape, { isMatter: true }),
+  'Circle': new Symbol('puppy.Circle', tFuncShape, { isMatter: true }),
+  'Rectangle': new Symbol('puppy.Rectangle', tFuncShape, { isMatter: true }),
+  'Polygon': new Symbol('puppy.Polygon', tFuncShape, { isMatter: true }),
+  'Label': new Symbol('puppy.Label', tFuncShape, { isMatter: true }),
   // 'Ball': new Symbol('puppy.Circle', tFuncShape),
   // 'Block': new Symbol('puppy.Ball', tFuncShape),
 
@@ -827,11 +827,35 @@ class Env {
     }
   }
 
-  public declVar(name: string, ty: Type) {
-    var code = `vars['${name}']`
-    if (this.inFunc()) {
-      code = name;
+  private isUtf8Name(s: string) {
+    for (var i = 0; i < s.length; i += 1) {
+      if (s.charCodeAt(i) > 128) {
+        return true;
+      }
     }
+    return false;
+  }
+
+  private local(s: string): string {
+    if (this.isUtf8Name(s)) {
+      const map = this.getroot('@utf8map');
+      if (map === undefined) {
+        this.setroot('@utf8map', {});
+        return this.local(s);
+      }
+      var vname = map[name];
+      if (vname === undefined) {
+        const id = Object.keys(map).length;
+        vname = `_v${id}`;
+        map[name] = vname;
+      }
+      return vname as string;
+    }
+    return s;
+  }
+
+  public declVar(name: string, ty: Type) {
+    var code = (this.inFunc() || this.inLoop()) ? this.local(name) : `vars['${name}']`
     const symbol = new Symbol(code, ty);
     symbol.isMutable = true;
     return this.set(name, symbol) as Symbol;
@@ -1057,21 +1081,21 @@ class Transpiler {
   }
 
   public ForStmt(env: Env, t: any, out: string[]) {
-    if (t['each'].tag !== 'Name') {
-      env.perror(t['each'], {
-        type: 'error', key: 'RequiredIdentifier',
-      });
-      return tVoid;
-    }
+    // if (t['each'].tag !== 'Name') {
+    //   env.perror(t['each'], {
+    //     type: 'error', key: 'RequiredIdentifier',
+    //   });
+    //   return tVoid;
+    // }
     const name = t['each'].tokenize();
     const ty = new VarType(env, t['each']);
     out.push(`for (let ${name} of `)
     this.check(new ListType(ty), env, t['list'], out)
     out.push(')')
     const lenv = new Env(env);
-    lenv.declVar(name, ty);
     lenv.setInLoop();
-    this.conv(lenv, t['body'], out)
+    lenv.declVar(name, ty);
+    this.conv(lenv, t['body'], out);
     return tVoid
   }
 
@@ -1566,7 +1590,6 @@ class Transpiler {
     return tString;
   }
 
-
 }
 
 const parser = generate('Source');
@@ -1654,13 +1677,19 @@ export const utest = (s: string) => {
 // '''
 // `));
 
+console.log(transpile(`
+from matterjs import *
+def Ball(x,y):
+  Circle(x,y)
+Ball(1,1)
+`));
 
-// console.log(transpile(`
-// def fibo(n):
-// 	if n < 3:
-// 	  return 1
-// 	return fibo(n-1)+fibo(n-2)
-// `));
+
+console.log(transpile(`
+for x in range(1,2):
+  for y in range(x,2):
+    x+y
+`));
 
 // console.log(transpile(`
 // def f(x,y):

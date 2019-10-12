@@ -17,3 +17,16 @@ test('str(true)', () => {
 test('str(false)', () => {
   expect(lib.str(false)).toBe('False');
 });
+
+test('int(true)', () => {
+  expect(lib.int(true)).toBe(1);
+});
+
+test('int(1.234)', () => {
+  expect(lib.int(1.234)).toBe(1);
+});
+
+test('int("123")', () => {
+  expect(lib.int("123")).toBe(123);
+});
+

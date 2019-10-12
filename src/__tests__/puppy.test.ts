@@ -1,7 +1,9 @@
 import { utest } from '../puppy';
 
 test('HelloWorld', () => {
-	expect(utest('print("hello,world")')).toBe('puppy.print("hello,world")');
+	expect(utest(`
+print("hello,world")
+`)).toBe('puppy.print("hello,world"); yield 2;');
 });
 
 // test('None', () => {
@@ -106,8 +108,8 @@ test('def succ(n)', () => {
 	expect(utest(`
 def succ(n):
   return n+1
-print(succ(1))
-`)).toBe("puppy.print(vars['succ'](1))");
+succ(1)
+`)).toBe("vars['succ'](1)");
 });
 
 test('def fibo(n)', () => {
@@ -117,6 +119,23 @@ def fibo(n):
 		return fibo(n-1)+fibo(n-2)
 	return 1
 `)).toBe("return 1");
+});
+
+test('Ball()', () => {
+	expect(utest(`
+from matterjs import *
+def Ball(x, y):
+	Circle(x, y)
+Ball(1, 1)
+`)).toBe("vars['Ball'](1,1); yield 5;");
+});
+
+test('for in', () => {
+	expect(utest(`
+for x in range(1,2):
+  for y in range(x,2):
+    x+y
+`)).toBe("}");
 });
 
 
