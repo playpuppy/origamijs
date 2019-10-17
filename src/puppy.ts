@@ -367,7 +367,7 @@ const unionSet = (a: number[], b: number[], c?: number[]) => {
     }
   }
   if (c !== undefined) {
-    for (const id of b) {
+    for (const id of c) {
       if (A.indexOf(id) === -1) {
         A.push(id);
       }
@@ -879,8 +879,8 @@ class PuppyError {
   }
 }
 
-const FIXME_subs = (t: any) => {
-  return (t instanceof ParseTree) ? t.subs() : [] as ParseTree[];
+const FIXME_subs = (t: any): any[] => {
+  return (t instanceof ParseTree) ? t.subs() : [];
 }
 
 class Transpiler {
@@ -1078,7 +1078,7 @@ class Transpiler {
     out.push(') ');
     this.conv(env, t['then'], out);
     if (t['elif'] !== undefined) {
-      for (const stmt of t['elif'].subs()) {
+      for (const stmt of FIXME_subs(t['elif'])) {
         this.conv(env, stmt, out);
       }
     }
@@ -1127,7 +1127,7 @@ class Transpiler {
       'hasReturn': false,
       'isMatter': false,
     });
-    for (const p of t['params'].subs()) {
+    for (const p of FIXME_subs(t['params'])) {
       const pname = p.tokenize('name');
       const ptype = new VarType(env, p['name']);
       const symbol = lenv.declVar(pname, ptype);
@@ -1155,7 +1155,7 @@ class Transpiler {
       'return': types[0],
       'hasReturn': false,
     });
-    for (const p of t['params'].subs()) {
+    for (const p of FIXME_subs(t['params'])) {
       const pname = p.tokenize('name');
       const ptype = new VarType(env, p['name']);
       const symbol = lenv.declVar(pname, ptype);
@@ -1695,22 +1695,33 @@ export const utest = (s: string) => {
 // `));
 
 console.log(transpile(`
-if True :
-  1
-elif True :
-  2
-elif True :
-  3
-else :
-  4
+from matterjs import *
+World(1600, 900, background="white")
+
+Rectangle(800, 900, width=1600, height=100, isStatic=true)
+for x in range(100, 701, 100):
+  Rectangle(x*1.5, 100, width=40, height=300)
+
+Rectangle(100, 200, width=200, height=200)
 `));
 
+// console.log(transpile(`
+// World(1600, 900, background="white");
+// ​
+// Rectangle(800, 900, width=1600, height=100, isStatic=true)
+// ​
+// for x in range(100, 701, 100):
+//     Rectangle(x*1.5, 100, width=40, height=300)
+// ​
+// Rectangle(100, 200, width=200, height=200)
+// `));
 
-console.log(transpile(`
-for x in range(1,2):
-  for y in range(x,2):
-    x+y
-`));
+
+// console.log(transpile(`
+// for x in range(1,2):
+//   for y in range(x,2):
+//     x+y
+// `));
 
 // console.log(transpile(`
 // def f(x,y):

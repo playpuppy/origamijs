@@ -47,7 +47,7 @@ export class ParseTree {
     return this.tag === 'err';
   }
 
-  public subs(): ParseTree[] {
+  public subs() {
     const subs: ParseTree[] = [];
     for (var i = 0; i < this.nodes.length; i += 1) {
       subs.push(this.nodes[i][1]);
@@ -616,8 +616,8 @@ const grammar = (start: string) => {
     peg['FalseExpr'] = pSeq2(pNode(pSeq2(pRange('Ff', []), pChar('alse')), 'FalseExpr', 0), pRef(peg, '_'));
     peg['NullExpr'] = pSeq2(pNode(pOre2(pChar('None'), pChar('null')), 'Null', 0), pRef(peg, '_'));
     peg['EOF'] = pNot(pAny());
-    peg['NL'] = pOre2(pChar('\n'), pRef(peg, 'EOF'));
-    peg['S'] = pRange(' \t\r\u3000、，', []);
+    peg['NL'] = pOre2(pSeq2(pOption(pChar('\r')), pChar('\n')), pRef(peg, 'EOF'));
+    peg['S'] = pRange(' \t\r\u3000', []);
     peg['_'] = pMany(pOre(pRef(peg, 'S'), pRef(peg, 'BLOCKCOMMENT'), pRef(peg, 'LINECOMMENT')));
     peg['__'] = pMany(pOre(pRef(peg, 'S'), pChar('\n'), pRef(peg, 'BLOCKCOMMENT'), pRef(peg, 'LINECOMMENT')));
     peg['SPC'] = pMany1(pOre(pRef(peg, 'S'), pRef(peg, 'BLOCKCOMMENT'), pRef(peg, 'LINECOMMENT')));
@@ -662,7 +662,7 @@ const example = (start: string, sample?: string) => {
 // example('Lambda','lambda x: print(x)')
 // example('Lambda','lambda x,y: print(x,y)')
 // example('Statement','if A == 1 :\n    print(A)\n    #hoge\n    print(A, B)\n    A = Ball(跳ね返る)\nelse:\n    print(A, B)\n\n    A = 2\n')
-// example('Statement','if A :\n    pass\nelif B :\n    pass\nelif C :\n    pass\nelse :\n    pass\n')
+// example('Statement','if A :\n    A\nelif B :\n    B\nelif C :\n    C\nelse :\n    D\n')
 // example('Statement','for x in [1,2,3]:\n    print(x)\n    print(x+1)\n')
 // example('VarDecl','A = 1')
 // example('Statement','A = 1')
