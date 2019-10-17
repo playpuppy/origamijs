@@ -138,6 +138,20 @@ for x in range(1,2):
 `)).toBe("}");
 });
 
+test('if/elif/else', () => {
+	expect(utest(`
+if True :
+	1
+elif True:
+	2
+elif True:
+	3
+else :
+	4
+`)).toBe("4");
+});
+
+
 
 // error
 test('ERR x=x+1', () => {

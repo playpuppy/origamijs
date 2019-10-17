@@ -879,6 +879,10 @@ class PuppyError {
   }
 }
 
+const FIXME_subs = (t: any) => {
+  return (t instanceof ParseTree) ? t.subs() : [] as ParseTree[];
+}
+
 class Transpiler {
 
   public constructor() {
@@ -1025,7 +1029,7 @@ class Transpiler {
   }
 
   public Source(env: Env, t: ParseTree, out: string[]) {
-    for (const subtree of t.subs()) {
+    for (const subtree of FIXME_subs(t)) {
       try {
         const out2: string[] = [];
         out2.push(env.get('@indent'))
@@ -1048,7 +1052,7 @@ class Transpiler {
     const env = new Env(penv)
     env.set('@indent', nested)
     out.push('{\n')
-    for (const subtree of t.subs()) {
+    for (const subtree of FIXME_subs(t)) {
       out.push(env.get('@indent'))
       this.conv(env, subtree, out);
       env.emitAutoYield(out);
@@ -1073,10 +1077,23 @@ class Transpiler {
     this.check(tBool, env, t['cond'], out);
     out.push(') ');
     this.conv(env, t['then'], out);
+    if (t['elif'] !== undefined) {
+      for (const stmt of t['elif'].subs()) {
+        this.conv(env, stmt, out);
+      }
+    }
     if (t['else'] !== undefined) {
       out.push('else ');
       this.conv(env, t['else'], out);
     }
+    return tVoid;
+  }
+
+  public ElifStmt(env: Env, t: any, out: string[]) {
+    out.push('else if (');
+    this.check(tBool, env, t['cond'], out);
+    out.push(') ');
+    this.conv(env, t['then'], out);
     return tVoid;
   }
 
@@ -1461,7 +1478,7 @@ class Transpiler {
 
   public Data(env: Env, t: ParseTree, out: string[]) {
     out.push('{');
-    for (const sub of t.subs()) {
+    for (const sub of FIXME_subs(t)) {
       this.conv(env, sub, out);
       out.push(',');
     }
@@ -1488,7 +1505,7 @@ class Transpiler {
   }
 
   public Tuple(env: Env, t: ParseTree, out: string[]) {
-    const subs = t.subs()
+    const subs = FIXME_subs(t);
     if (subs.length > 2) {
       env.perror(t, {
         type: 'warning',
@@ -1513,7 +1530,7 @@ class Transpiler {
   public List(env: Env, t: ParseTree, out: string[]) {
     var ty = new VarType(env, t);
     out.push('[')
-    for (const sub of t.subs()) {
+    for (const sub of FIXME_subs(t)) {
       ty = this.check(ty, env, sub, out, {
         type: 'error',
         key: 'AllTypeAsSame', //全ての要素を同じ型に揃えてください
@@ -1527,7 +1544,7 @@ class Transpiler {
   public Format(env: Env, t: ParseTree, out: string[]) {
     var c = 0;
     out.push('(');
-    for (const e of t.subs()) {
+    for (const e of FIXME_subs(t)) {
       if (c > 0) {
         out.push('+')
       }
@@ -1678,10 +1695,14 @@ export const utest = (s: string) => {
 // `));
 
 console.log(transpile(`
-from matterjs import *
-def Ball(x,y):
-  Circle(x,y)
-Ball(1,1)
+if True :
+  1
+elif True :
+  2
+elif True :
+  3
+else :
+  4
 `));
 
 

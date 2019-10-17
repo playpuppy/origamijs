@@ -47,7 +47,7 @@ export class ParseTree {
     return this.tag === 'err';
   }
 
-  public subs() {
+  public subs(): ParseTree[] {
     const subs: ParseTree[] = [];
     for (var i = 0; i < this.nodes.length; i += 1) {
       subs.push(this.nodes[i][1]);
@@ -550,7 +550,9 @@ const grammar = (start: string) => {
     peg['Pass'] = pNode(pSeq2(pChar('pass'), pRef(peg, '_')), 'Pass', 0);
     peg['Break'] = pNode(pSeq2(pChar('break'), pRef(peg, '_')), 'Break', 0);
     peg['Continue'] = pNode(pSeq2(pChar('continue'), pRef(peg, '_')), 'Continue', 0);
-    peg['IfStmt'] = pNode(pSeq(pSeq2(pChar('if'), pRef(peg, 'S')), pRef(peg, '_'), pEdge('cond', pRef(peg, 'Expression')), pChar(':'), pRef(peg, '_'), pEdge('then', pOre2(pRef(peg, 'Block'), pRef(peg, 'Statement'))), pOption(pSeq(pOre2(pMatch(0), pRef(peg, 'NL')), pChar('else'), pRef(peg, '_'), pChar(':'), pRef(peg, '_'), pEdge('else', pOre2(pRef(peg, 'Block'), pRef(peg, 'Statement')))))), 'IfStmt', 0);
+    peg['IfStmt'] = pNode(pSeq(pSeq2(pChar('if'), pRef(peg, 'S')), pRef(peg, '_'), pEdge('cond', pRef(peg, 'Expression')), pChar(':'), pRef(peg, '_'), pEdge('then', pOre2(pRef(peg, 'Block'), pRef(peg, 'Statement'))), pOption(pEdge('elif', pRef(peg, 'ElifBlock'))), pOption(pSeq(pOre2(pMatch(0), pRef(peg, 'NL')), pChar('else'), pRef(peg, '_'), pChar(':'), pRef(peg, '_'), pEdge('else', pOre2(pRef(peg, 'Block'), pRef(peg, 'Statement')))))), 'IfStmt', 0);
+    peg['ElifBlock'] = pNode(pMany1(pEdge('', pRef(peg, 'ElifStmt'))), '', 0);
+    peg['ElifStmt'] = pNode(pSeq(pOre2(pMatch(0), pRef(peg, 'NL')), pSeq2(pChar('elif'), pRef(peg, 'S')), pRef(peg, '_'), pEdge('cond', pRef(peg, 'Expression')), pChar(':'), pRef(peg, '_'), pEdge('then', pOre2(pRef(peg, 'Block'), pRef(peg, 'Statement')))), 'ElifStmt', 0);
     peg['ForStmt'] = pNode(pSeq(pSeq2(pChar('for'), pRef(peg, 'S')), pRef(peg, '_'), pEdge('each', pRef(peg, 'Name')), pSeq2(pChar('in'), pRef(peg, 'S')), pRef(peg, '_'), pEdge('list', pRef(peg, 'Expression')), pChar(':'), pRef(peg, '_'), pEdge('body', pOre2(pRef(peg, 'Block'), pRef(peg, 'Statement')))), 'ForStmt', 0);
     peg['WhileStmt'] = pNode(pSeq(pSeq2(pChar('while'), pRef(peg, 'S')), pRef(peg, '_'), pEdge('cond', pRef(peg, 'Expression')), pChar(':'), pRef(peg, '_'), pEdge('body', pOre2(pRef(peg, 'Block'), pRef(peg, 'Statement')))), 'WhileStmt', 0);
     peg['VarDecl'] = pOre2(pNode(pSeq(pEdge('left', pRef(peg, 'LeftHand')), pChar('='), pRef(peg, '_'), pEdge('right', pRef(peg, 'Expression'))), 'VarDecl', 0), pRef(peg, 'SelfAssign'));
@@ -659,11 +661,8 @@ const example = (start: string, sample?: string) => {
 // example('Lambda','lambda: print(1)')
 // example('Lambda','lambda x: print(x)')
 // example('Lambda','lambda x,y: print(x,y)')
-// example('IfStmt','if A == 1 :\n    print(A)\n    #hoge\n    print(A, B)\n    A = Ball(跳ね返る)\nelse:\n    print(A, B)\n\n    A = 2\n')
 // example('Statement','if A == 1 :\n    print(A)\n    #hoge\n    print(A, B)\n    A = Ball(跳ね返る)\nelse:\n    print(A, B)\n\n    A = 2\n')
-// example('IfStmt','if A == 1 :\n    print(A)\nelse:\n    print(A, B)\n')
-// example('Statement','if A == 1 :\n    print(A)\nelse:\n    print(A, B)\n')
-// example('ForStmt','for x in [1,2,3]:\n    print(x)\n    print(x+1)\n')
+// example('Statement','if A :\n    pass\nelif B :\n    pass\nelif C :\n    pass\nelse :\n    pass\n')
 // example('Statement','for x in [1,2,3]:\n    print(x)\n    print(x+1)\n')
 // example('VarDecl','A = 1')
 // example('Statement','A = 1')

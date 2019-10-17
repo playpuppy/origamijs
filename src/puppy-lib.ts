@@ -1,4 +1,13 @@
 export class Lib {
+  private Body: any;
+  private Composite: any;
+  private Constraint: any;
+
+  public constructer(Matter: any) {
+    this.Body = Matter['Body'];
+    this.Composite = Matter['Composite'];
+    this.Constraint = Matter['Constraint'];
+  }
 
   /* python */
 
@@ -168,56 +177,71 @@ export class Lib {
     return 0;
   }
 
-  public map(func: any, lst: number[]) {
-    return Array.from(lst, func); // funcがダメ
-  }
+  // public map(func: any, xs: number[]) {
+  //   return Array.from(xs, func); // funcがダメ
+  // }
 
   /* Matter.Body */
 
-  // public setPosition(body: any, x: number, y: number) {
-  //   Matter.Body.setPosition(body, { x, y });
-  // }
+  public setPosition(body: any, x: number, y: number) {
+    this.Body.setPosition(body, { x, y });
+  }
 
-  // public applyForce(body: any, x: number, y: number, fx: number, fy: number) {
-  //   Matter.Body.applyForce(body, { x, y }, { x: fx, y: fy });
-  // }
+  public translate(body: any, x: number, y: number) {
+    this.Body.translate(body, { x, y });
+  }
 
-  // public rotate(body: any, angle: number, _x?: number, _y?: number) {
-  //   Matter.Body.rotate(body, angle);
-  // }
+  public applyForce(body: any, x: number, y: number, fx: number, fy: number) {
+    this.Body.applyForce(body, { x, y }, { x: fx, y: fy });
+  }
 
-  // public scale(
-  //   body: any,
-  //   sx: number,
-  //   sy: number,
-  //   _x?: number,
-  //   _y?: number
-  // ) {
-  //   Matter.Body.scale(body, sx, sy);
-  // }
 
-  // public setAngle(body: any, angle: number) {
-  //   Matter.Body.setAngle(body, angle);
-  // }
+  public rotate(body: any, angle: number, _x?: number, _y?: number) {
+    this.Body.rotate(body, angle);
+  }
 
-  // public setVelocity(body: any, x: number, y: number) {
-  //   Matter.Body.setVelocity(body, { x, y });
-  // }
+  public scale(body: any, sx: number, sy: number,
+    _x?: number,
+    _y?: number
+  ) {
+    this.Body.scale(body, sx, sy);
+  }
 
-  // public setAngularVelocity(body: any, velocity: number) {
-  //   Matter.Body.setAngularVelocity(body, velocity);
-  // }
+  public setAngle(body: any, angle: number) {
+    this.Body.setAngle(body, angle);
+  }
 
-  // public setDensity(body: any, density: number) {
-  //   Matter.Body.setDensity(body, density);
-  // }
+  public setVelocity(body: any, x: number, y: number) {
+    this.Body.setVelocity(body, { x, y });
+  }
 
-  // public setMass(body: any, mass: number) {
-  //   Matter.Body.setMass(body, mass);
-  // }
+  public setAngularVelocity(body: any, velocity: number) {
+    this.Body.setAngularVelocity(body, velocity);
+  }
 
-  // public setStatic(body: any, flag: boolean) {
-  //   Matter.Body.setStatic(body, flag);
-  // }
+  public setDensity(body: any, density: number) {
+    this.Body.setDensity(body, density);
+  }
+
+  public setMass(body: any, mass: number) {
+    this.Body.setMass(body, mass);
+  }
+
+  public setStatic(body: any, flag: boolean) {
+    this.Body.setStatic(body, flag);
+  }
+
+  public newComosite(options: {}) {
+    return this.Composite.create({ label: 'comosite' })
+  }
+
+  public addBody(parent: any, body: any) {
+    this.Composite.addBody(parent, body);
+  }
+
+  public addConstraint(parent: any, options: any) {
+    this.Composite.addConstraint(this.Constraint.create(options));
+  }
+
 }
 

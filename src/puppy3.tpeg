@@ -124,7 +124,7 @@ Continue = { 'continue' _ #Continue }
 
 /* if文 */
 
-example IfStmt,Statement '''
+example Statement '''
 if A == 1 :
     print(A)
     #hoge
@@ -136,17 +136,34 @@ else:
     A = 2
 '''
 
-example IfStmt,Statement '''
-if A == 1 :
-    print(A)
-else:
-    print(A, B)
+example Statement '''
+if A :
+    pass
+elif B :
+    pass
+elif C :
+    pass
+else :
+    pass
 '''
+
+// IfStmt = {
+//     ('if' S) _ 
+//     cond: Expression ':' _
+//     then: (Block / Statement)
+//     (
+//         (@match(INDENT) / NL)
+//         'else' _  ':' _
+//         else: (Block / Statement)
+//     )?
+//     #IfStmt
+// }
 
 IfStmt = {
     ('if' S) _ 
     cond: Expression ':' _
     then: (Block / Statement)
+    (elif: ElifBlock)?
     (
         (@match(INDENT) / NL)
         'else' _  ':' _
@@ -155,9 +172,21 @@ IfStmt = {
     #IfStmt
 }
 
+ElifBlock = {
+    ElifStmt+
+}
+
+ElifStmt = {
+    (@match(INDENT) / NL)
+    ('elif' S) _ 
+    cond: Expression ':' _
+    then: (Block / Statement)
+    #ElifStmt
+}
+
 /* for文 (* *) */
 
-example ForStmt,Statement '''
+example Statement '''
 for x in [1,2,3]:
     print(x)
     print(x+1)
