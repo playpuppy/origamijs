@@ -68,3 +68,4 @@ test('s[:]', () => {
 // test('a[:]', () => {
 //   expect(lib.slice([1, 2, 3], 0, undefined)).toBe([1, 2, 3]);
 // });
+

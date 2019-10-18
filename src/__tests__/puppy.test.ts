@@ -151,6 +151,13 @@ else :
 `)).toBe("4");
 });
 
+test('(1)', () => {
+	expect(utest(`(1)`)).toBe("(1)");
+});
+
+test('(1,2)', () => {
+	expect(utest(`(1,2)`)).toBe("lib.vec(1,2)");
+});
 
 
 // error

@@ -359,7 +359,7 @@ const tStringOrList = union(tListAny, tString);
 const tMatter = new BaseType('Object', MUST);
 const tObject = tMatter;
 const tVec = new BaseType('Vec', MUST);
-const tVec0 = new BaseType('Vec', '{x:0, y:0}');
+const tVec0 = new BaseType('Vec', 'lib.vec(0,0)');
 
 
 //const tUndefined = new BaseType('undefined');
@@ -640,7 +640,7 @@ const valueOfType = (ty: Type) => {
       return "false";
     }
     if (name === tVec.toString()) {
-      return "{x:0, y:0}";
+      return "lib.vec(0,0)";
     }
     return "0";
   }
@@ -707,6 +707,7 @@ type ErrorLog = {
   code?: string;
   request?: Type;
   given?: Type;
+  fix?: string;
 };
 
 const setpos = (s: string, pos: number, elog: ErrorLog) => {
@@ -965,19 +966,22 @@ class Transpiler {
 
   public check(req: Type, env: Env, t: ParseTree, out: string[], elog?: ErrorLog) {
     const ty = this.conv(env, t, out);
-    if (req.accept(ty, true)) {
-      return ty;
-    }
-    if (elog === undefined) {
-      elog = {
-        key: 'TypeError',
-        subject: req.toString(),
+    if (req !== undefined) {
+      if (req.accept(ty, true)) {
+        return ty;
       }
+      if (elog === undefined) {
+        elog = {
+          key: 'TypeError',
+          subject: req.toString(),
+        }
+      }
+      elog.request = req;
+      elog.given = ty;
+      env.perror(t, elog);
+      return this.skip(env, t, out);
     }
-    elog.request = req;
-    elog.given = ty;
-    env.perror(t, elog);
-    return this.skip(env, t, out);
+    return ty;
   }
 
   private checkBinary(env: Env, t: any, op: string, ty1: Type, left: string, ty2: Type, right: string, out: string[]) {
@@ -1051,10 +1055,10 @@ class Transpiler {
     const pkg = modules[name];
     if (pkg === undefined) {
       env.perror(t.get('name'), {
-        type: 'error',
+        type: 'warning',
         key: 'UnknownPackageName',
       });
-      return this.skip(env, t, out);
+      return tVoid;
     }
     env.from_import(pkg); // FIXME
     return tVoid;
@@ -1066,10 +1070,10 @@ class Transpiler {
     const pkg = modules[name];
     if (pkg === undefined) {
       env.perror(t.get('name'), {
-        type: 'error',
+        type: 'warning',
         key: 'UnknownPackageName',
       });
-      return this.skip(env, t, out);
+      return tVoid;
     }
     env.setModule(alias, pkg);
     return tVoid;
@@ -1565,18 +1569,23 @@ class Transpiler {
 
   public KeyValue(env: Env, t: any, out: string[]) {
     const name = t.tokenize('name');
-    out.push(`'${name}': `)
-    const ty = (KEYTYPES as any)[name];
-    if (ty === undefined) {
-      env.perror(t['name'], {
-        type: 'warning',
-        key: 'UnknownName',
-        subject: name,
-      });
-      this.conv(env, t['value'], out)
+    if (t['name'].tag === 'Name') {
+      out.push(`'${name}': `)
+      const ty = env.inferSymbolType(name);
+      if (ty === undefined) {
+        env.perror(t['name'], {
+          type: 'warning',
+          key: 'UnknownName',
+          subject: name,
+          fix: 'EncloseQuote',
+        });
+      }
+      this.check(ty, env, t['value'], out);
+      return ty;
     }
     else {
-      this.check(ty, env, t['value'], out);
+      out.push(`${name}: `)
+      this.conv(env, t['value'], out)
     }
     return tVoid
   }
@@ -1586,7 +1595,8 @@ class Transpiler {
     if (subs.length > 2) {
       env.perror(t, {
         type: 'warning',
-        key: 'ListSyntaxError', //リストは[ ]で囲みましょう
+        key: 'SyntaxError',
+        fix: 'EncloseBrace', // [ ]で囲みましょう
       });
       return this.List(env, t, out);
     }
@@ -1596,11 +1606,11 @@ class Transpiler {
       out.push(')')
       return ty;
     }
-    out.push('{ x: ')
+    out.push('lib.vec(')
     this.check(tInt, env, subs[0], out);
-    out.push(', y: ')
+    out.push(',')
     this.check(tInt, env, subs[1], out);
-    out.push('}')
+    out.push(')')
     return tVec;
   }
 
@@ -1750,6 +1760,8 @@ ${jscode}
   return code as PuppyCode;
 }
 
+export const puppy_version = () => '1.0.0 (alpha)'
+
 export const utest = (s: string) => {
   const src = { source: s };
   const code = compile(src);
@@ -1806,7 +1818,12 @@ Rectangle(100, 200, width=200, height=200)
 // `));
 
 console.log(transpile(`
-a=[1,2]
-a[1:0]
+{
+  'hoge': 1,
+  hogo: 2
+}
 `));
 
+console.log(transpile(`
+v = (1,2)
+`));

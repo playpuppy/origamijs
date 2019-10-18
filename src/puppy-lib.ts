@@ -19,7 +19,7 @@ export class Lib {
     }
     if (typeof x === 'string') {
       const v = Number.parseInt(x, radix);
-      return (v === NaN) ? 0 : v;
+      return (Number.isNaN(v)) ? 0 : v;
     }
     if (typeof x === 'boolean') {
       return x ? 1 : 0;
@@ -205,6 +205,12 @@ export class Lib {
   // public map(func: any, xs: number[]) {
   //   return Array.from(xs, func); // funcがダメ
   // }
+
+  /* vec */
+
+  public vec(x = 0, y = 0) {
+    return { x, y };
+  }
 
   /* Matter.Body */
 
