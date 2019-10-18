@@ -1,13 +1,22 @@
 import { generate, ParseTree } from './puppy-parser';
 
 const INDENT = '\t';
+const MUST = '';
 
 /* Type System */
 
 class Type {
-  public isOptional: boolean;
-  public constructor(isOptional: boolean) {
-    this.isOptional = isOptional;
+  protected code: string;
+  public constructor(code: string) {
+    this.code = code;
+  }
+
+  public isOptional() {
+    return this.code !== MUST;
+  }
+
+  public getValue() {
+    return this.code;
   }
 
   public toString() {
@@ -53,8 +62,8 @@ class Type {
 class BaseType extends Type {
   private name: string;
 
-  constructor(name: string, isOptional?: any) {
-    super(isOptional !== undefined);
+  constructor(name: string, code: string) {
+    super(code);
     this.name = name;
   }
 
@@ -96,7 +105,7 @@ class BaseType extends Type {
 class VoidType extends BaseType {
 
   constructor() {
-    super('void', false);
+    super('void', MUST);
   }
 
   public accept(ty: Type, update: boolean): boolean {
@@ -110,8 +119,8 @@ class VoidType extends BaseType {
 
 class AnyType extends BaseType {
 
-  constructor(isOptional?: any) {
-    super('any', isOptional);
+  constructor(code: string) {
+    super('any', code);
   }
 
   public accept(ty: Type, update: boolean): boolean {
@@ -133,13 +142,12 @@ class AnyType extends BaseType {
   public toVarType(map: any) {
     return new VarType(map.env, map.t);
   }
-
 }
 
 class FuncType extends Type {
   private types: Type[];
   constructor(...types: Type[]) {
-    super(false);
+    super(MUST);
     this.types = types;
   }
 
@@ -210,8 +218,8 @@ class FuncType extends Type {
 
 class ListType extends Type {
   private param: Type;
-  constructor(param: Type, isOptional?: any) {
-    super(isOptional !== undefined);
+  constructor(param: Type, code = MUST) {
+    super(code);
     this.param = param;
   }
 
@@ -229,7 +237,7 @@ class ListType extends Type {
   public realType(): Type {
     const p = this.param.realType();
     if (p !== this.param) {
-      return new ListType(p);
+      return new ListType(p, this.code);
     }
     return this;
   }
@@ -267,7 +275,7 @@ class ListType extends Type {
 class UnionType extends Type {
   private types: Type[];
   constructor(...types: Type[]) {
-    super(false);
+    super(MUST);
     this.types = types;
   }
 
@@ -332,22 +340,26 @@ const union = (...types: Type[]) => {
 }
 
 
-const tAny = new AnyType();
+const tAny = new AnyType(MUST);
 const tVoid = new VoidType();
-const tBool = new BaseType('Bool');
-const tInt = new BaseType('Number');
-const tInt_ = new BaseType('Number', true);
+const tBool = new BaseType('bool', MUST);
+const tInt = new BaseType('number', MUST);
+const tInt_ = new BaseType('number', 'undefined');
 const tFloat = tInt;
-const tFloat_ = tInt_;
-const tString = new BaseType('String');
-const tString_ = new BaseType('String', true);
-const tA = new BaseType('a');
-const tListA = new ListType(tA);
-const tListInt = new ListType(tInt);
-const tListAny = new ListType(tAny);
-const tMatter = new BaseType('Object');
+const tInt0 = new BaseType('number', '0');
+const tInt1 = new BaseType('number', '1');
+const tFloat0 = new BaseType('number', '0.0');
+const tString = new BaseType('string', MUST);
+const tString_ = new BaseType('string', "''");
+const tA = new BaseType('a', MUST);
+const tListA = new ListType(tA, MUST);
+const tListInt = new ListType(tInt, MUST);
+const tListAny = new ListType(tAny, MUST);
+const tStringOrList = union(tListAny, tString);
+const tMatter = new BaseType('Object', MUST);
 const tObject = tMatter;
-const tVec = new BaseType('Vec');
+const tVec = new BaseType('Vec', MUST);
+const tVec0 = new BaseType('Vec', '{x:0, y:0}');
 
 
 //const tUndefined = new BaseType('undefined');
@@ -382,7 +394,7 @@ class VarType extends Type {
   private ref: ParseTree | null;
 
   constructor(env: Env, ref: ParseTree) {
-    super(false);
+    super(MUST);
     this.varMap = env.getroot('@varmap');
     this.varid = this.varMap.length;
     this.varMap.push(EmptyNumberSet);
@@ -444,12 +456,12 @@ class VarType extends Type {
 class OptionType extends Type {
   public options: any;
   constructor(options: any) {
-    super(false);
+    super(JSON.stringify(options));
     this.options = options;
   }
 
   public toString() {
-    return JSON.stringify(this.options);
+    return this.code;
   }
 
   public accept(ty: Type): boolean {
@@ -561,7 +573,6 @@ const import_matterjs = {
   '.setMass': new Symbol('lib.setMass', new FuncType(tVoid, tMatter, tInt)),
   '.setStatic': new Symbol('lib.setStatic', new FuncType(tVoid, tMatter, tBool)),
   '.setVelocity': new Symbol('lib.setVelocity', new FuncType(tVoid, tMatter, tInt)),
-
 };
 
 const modules: any = {
@@ -582,31 +593,58 @@ const checkSymbolNames = () => {
 }
 checkSymbolNames();
 
-const KEYTYPES = {
-  'width': tInt, 'height': tInt,
-  'x': tInt, 'y': tInt,
-  'image': tString,
-  'strokeStyle': tColor,
+const KEYTYPES: any = {
+  'width': tInt0,
+  'height': tInt0,
+  'x': tInt0, 'y': tInt0,
+  'image': tString_,
   'lineWidth': tInt,
-  'fillStyle': tColor,
-  'restitution': tFloat,
-  'angle': tFloat,
-  'position': tVec,
-  'mass': tInt, 'density': tInt, 'area': tInt,
-  'friction': tFloat, 'frictionStatic': tFloat, 'airFriction': tFloat,
-  'torque': tFloat, 'stiffness': tFloat,
+  'strokeStyle': tString,
+  'fillStyle': tString,
+  'restitution': tFloat0,
+  'angle': tFloat0,
+  'position': tVec0,
+  'mass': tInt0, 'density': tInt0, 'area': tInt0,
+  'friction': tFloat0,
+  'frictionStatic': tFloat0,
+  'airFriction': tFloat0,
+  'torque': tFloat0,
+  'stiffness': tFloat0,
   'isSensor': tBool,
   'isStatic': tBool,
-  'damping': tFloat,
+  'damping': tFloat0,
   'in': new FuncType(tVoid, tMatter, tMatter),
   'out': new FuncType(tVoid, tMatter, tMatter),
   'over': new FuncType(tVoid, tMatter, tMatter),
   'clicked': new FuncType(tVoid, tMatter),
-  'font': tString,
-  'fontColor': tColor,
+  'font': tString_,
+  'fontColor': tString,
   'textAlign': tString,
   'value': tInt,
-  'message': tString,
+  'text': tString,
+}
+
+const valueOfType = (ty: Type) => {
+  if (ty.isOptional()) {
+    return ty.getValue();
+  }
+  if (ty instanceof ListType) {
+    return '[]';
+  }
+  if (ty instanceof BaseType) {
+    const name = ty.toString();
+    if (name === tString.toString()) {
+      return "''";
+    }
+    if (name === tBool.toString()) {
+      return "false";
+    }
+    if (name === tVec.toString()) {
+      return "{x:0, y:0}";
+    }
+    return "0";
+  }
+  return 'undefined';
 }
 
 //const ty1 = this.check(tleft(op), env, t['left'], out1);
@@ -649,7 +687,7 @@ const tleft = (op: string) => {
 
 const tright = (op: string, ty: Type) => {
   if (op == 'in') {
-    return union(new ListType(ty), tString);
+    return union(new ListType(ty, MUST), tString);
   }
   const ty2 = (tleftMap as any)[op];
   if (ty2 === tAny || ty2 === tInt || op === '*') {
@@ -687,8 +725,6 @@ const setpos = (s: string, pos: number, elog: ErrorLog) => {
   elog.col = c;
   return elog;
 }
-
-
 
 class Env {
   private root: Env;
@@ -771,6 +807,17 @@ class Env {
     return undefined;
   }
 
+  public inferSymbolType(name: string) {
+    var ty = KEYTYPES[name];
+    if (ty === undefined) {
+      const symbol = this.get(name);
+      if (symbol === undefined) {
+        return undefined;
+      }
+    }
+    return ty;
+  }
+
   public perror(t: ParseTree, elog: ErrorLog) {
     const logs = this.root.vars['@logs'];
     if (elog.type === undefined) {
@@ -793,7 +840,7 @@ class Env {
     const id = trace.length;
     const pos = t.begin()
     trace.push([pos[0], pos[1], pos[2], t.epos - t.spos])
-    return `,puppy,${id}`;
+    return `,${id}`;
   }
 
   public setInLoop() {
@@ -923,8 +970,8 @@ class Transpiler {
     }
     if (elog === undefined) {
       elog = {
-        type: 'error',
         key: 'TypeError',
+        subject: req.toString(),
       }
     }
     elog.request = req;
@@ -941,7 +988,7 @@ class Transpiler {
     ty1 = ty1.realType();
     ty2 = ty2.realType();
     if (op === '+') {
-      if (ty1 === tInt && ty2 === tInt) {
+      if (tInt.accept(ty1, false) && tInt.accept(ty2, false)) {
         out.push(`(${left} + ${right})`);
         return tInt;
       }
@@ -958,7 +1005,7 @@ class Transpiler {
       return this.skip(env, t, out);
     }
     if (op === '*') {
-      if (ty1 === tInt && ty2 === tInt) {
+      if (tInt.accept(ty1, false) && tInt.accept(ty2, false)) {
         out.push(`(${left} * ${right})`);
         return tInt;
       }
@@ -1376,7 +1423,6 @@ class Transpiler {
       funcType = funcType.toVarType({ env, ref: t });
       //console.log(funcType.toString());
     }
-
     for (var i = 0; i < args.length; i += 1) {
       if (!(i < funcType.psize())) {
         env.perror(args[i], {
@@ -1437,8 +1483,16 @@ class Transpiler {
     out.push('lib.get(');
     this.check(tMatter, env, t['recv'], out);
     const name = t.tokenize('name');
-    const ty = (KEYTYPES as any)[name] || new VarType(env, t['name']);
-    out.push(`,'${name}'${env.trace(t['name'])})`);
+    const ty = env.inferSymbolType(name);
+    if (ty === undefined) {
+      env.perror(t['name'], {
+        key: 'UnknownName',
+        subject: name,
+      });
+      return this.skip(env, t, out);
+    }
+    const code = valueOfType(ty);
+    out.push(`,'${name}',${code}${env.trace(t['name'])})`);
     return ty;
   }
 
@@ -1474,6 +1528,29 @@ class Transpiler {
     this.check(tInt, env, t['index'], out)
     out.push(']')
     return (ty instanceof ListType) ? ty.ptype(0) : ty;
+  }
+
+  public Slice(env: Env, t: any, out: string[]) {
+    out.push('lib.slice(');
+    const ty = this.check(tStringOrList, env, t['recv'], out);
+    out.push(',');
+    const left = t['left'];
+    if (left === undefined) {
+      out.push('0');
+    }
+    else {
+      this.check(tInt, env, left, out);
+    }
+    out.push(',');
+    const right = t['right'];
+    if (right === undefined) {
+      out.push('undefined');
+    }
+    else {
+      this.check(tInt, env, right, out);
+    }
+    out.push(`${env.trace(t)})`);
+    return ty
   }
 
   public Data(env: Env, t: ParseTree, out: string[]) {
@@ -1728,7 +1805,8 @@ Rectangle(100, 200, width=200, height=200)
 //   return x*y;
 // `));
 
-// console.log(transpile(`
-// def f(x,y):
-//   return x//y;
-// `));
+console.log(transpile(`
+a=[1,2]
+a[1:0]
+`));
+

@@ -65,14 +65,14 @@ test('field+1', () => {
 from matterjs import *
 c = Circle(10, 10)
 c.width += 1
-`)).toBe("vars['c'].width = (lib.get(vars['c'],'width',puppy,0) + 1)");
+`)).toBe("vars['c'].width = (lib.get(vars['c'],'width',0,0) + 1)");
 });
 
 test('index+=1', () => {
 	expect(utest(`
 c = [1,2]
 c[0] += 1
-`)).toBe("vars['c'][0] = (lib.index(vars['c'],0,puppy,0) + 1)");
+`)).toBe("vars['c'][0] = (lib.index(vars['c'],0,0) + 1)");
 });
 
 test('c.width', () => {

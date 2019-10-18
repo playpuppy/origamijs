@@ -1,9 +1,11 @@
 export class Lib {
+  private puppy: any;
   private Body: any;
   private Composite: any;
   private Constraint: any;
 
-  public constructer(Matter: any) {
+  public constructor(puppy: any, Matter: any) {
+    this.puppy = puppy;
     this.Body = Matter['Body'];
     this.Composite = Matter['Composite'];
     this.Constraint = Matter['Constraint'];
@@ -11,12 +13,13 @@ export class Lib {
 
   /* python */
 
-  public static int(x: any): number {
+  public int(x: any, radix?: number): number {
     if (typeof x === 'number') {
       return x | 0;
     }
     if (typeof x === 'string') {
-      return Number.parseInt(x);
+      const v = Number.parseInt(x, radix);
+      return (v === NaN) ? 0 : v;
     }
     if (typeof x === 'boolean') {
       return x ? 1 : 0;
@@ -24,12 +27,13 @@ export class Lib {
     return x | 0;
   }
 
-  public static float(x: any): number {
+  public float(x: any): number {
     if (typeof x === 'number') {
       return x;
     }
     if (typeof x === 'string') {
-      return Number.parseFloat(x);
+      const v = Number.parseFloat(x);
+      return (v === NaN) ? 0.0 : v;
     }
     if (typeof x === 'boolean') {
       return x ? 1.0 : 0.0;
@@ -37,14 +41,36 @@ export class Lib {
     return x;
   }
 
-  public static str(x: any): string {
-    if (typeof x === 'boolean') {
-      return x ? 'True' : 'False';
+  public str(obj: any): string {
+    if (typeof obj === 'number' || typeof obj === 'string') {
+      return `${obj}`;
     }
-    if (Array.isArray(x)) {
-      return '[' + x.map(x => this.str(x)).join(', ') + ']';
+    if (typeof obj === 'boolean') {
+      return obj ? 'True' : 'False';
     }
-    return `${x}`;
+    if (Array.isArray(obj)) {
+      return '[' + obj.map(x => this.repr(x)).join(', ') + ']';
+    }
+    if (obj === undefined) {
+      return 'undefined';
+    }
+    if (obj.x && obj.y) {
+      return `(${obj.x}, ${obj.y})`;
+    }
+    if (obj.text) {
+      return obj.text;
+    }
+    return '{' + Object.keys(obj).map(key => `${key}: ${this.repr(obj[key])}`).join(', ') + '}'
+  }
+
+  public repr(obj: any): string {
+    if (typeof obj === 'string') {
+      if (obj.indexOf('"') == -1) {
+        return `"${obj}"`
+      }
+      return `'${obj}'`
+    }
+    return this.str(obj);
   }
 
   /* operator */
@@ -77,7 +103,6 @@ export class Lib {
   public anyIn(x: any, a: any) {
     return a.indexOf(x) >= 0;
   }
-
 
   public range(x: number, y?: number, z?: number) {
     let start = 0;
@@ -122,15 +147,15 @@ export class Lib {
 
   /* string/array (method) */
 
-  public get(a: any, name: string, puppy?: any) {
+  public get(a: any, name: string, value?: any, ref?: any) {
     const v = a[name];
     if (v === undefined) {
-
+      return value;
     }
     return v;
   }
 
-  public index(a: any, index: number, puppy?: any) {
+  public index(a: any, index: number, ref?: any) {
     if (typeof a === 'string') {
       return a.charAt((index + a.length) % a.length);
     }
@@ -140,12 +165,12 @@ export class Lib {
     return undefined;
   }
 
-  public slice(a: any, x: number, y?: number) {
+  public slice(a: any, x: number, y?: number, ref?: any) {
     if (typeof a === 'string') {
       if (y == undefined) {
         y = a.length;
       }
-      return a.substr(x, y - x);
+      return a.substring(x, y);
     }
     if (Array.isArray(a)) {
       if (y == undefined) {
@@ -195,15 +220,11 @@ export class Lib {
     this.Body.applyForce(body, { x, y }, { x: fx, y: fy });
   }
 
-
   public rotate(body: any, angle: number, _x?: number, _y?: number) {
     this.Body.rotate(body, angle);
   }
 
-  public scale(body: any, sx: number, sy: number,
-    _x?: number,
-    _y?: number
-  ) {
+  public scale(body: any, sx: number, sy: number, _x?: number, _y?: number) {
     this.Body.scale(body, sx, sy);
   }
 
