@@ -19,7 +19,7 @@ export class Lib {
     }
     if (typeof x === 'string') {
       const v = Number.parseInt(x, radix);
-      return (Number.isNaN(v)) ? 0 : v;
+      return Number.isNaN(v) ? 0 : v;
     }
     if (typeof x === 'boolean') {
       return x ? 1 : 0;
@@ -33,7 +33,7 @@ export class Lib {
     }
     if (typeof x === 'string') {
       const v = Number.parseFloat(x);
-      return (v === NaN) ? 0.0 : v;
+      return isNaN(v) ? 0.0 : v;
     }
     if (typeof x === 'boolean') {
       return x ? 1.0 : 0.0;
@@ -60,15 +60,21 @@ export class Lib {
     if (obj.text) {
       return obj.text;
     }
-    return '{' + Object.keys(obj).map(key => `${key}: ${this.repr(obj[key])}`).join(', ') + '}'
+    return (
+      '{' +
+      Object.keys(obj)
+        .map(key => `${key}: ${this.repr(obj[key])}`)
+        .join(', ') +
+      '}'
+    );
   }
 
   public repr(obj: any): string {
     if (typeof obj === 'string') {
       if (obj.indexOf('"') == -1) {
-        return `"${obj}"`
+        return `"${obj}"`;
       }
-      return `'${obj}'`
+      return `'${obj}'`;
     }
     return this.str(obj);
   }
@@ -259,7 +265,7 @@ export class Lib {
   }
 
   public newComosite(options: {}) {
-    return this.Composite.create({ label: 'comosite' })
+    return this.Composite.create({ label: 'comosite' });
   }
 
   public addBody(parent: any, body: any) {
@@ -269,6 +275,4 @@ export class Lib {
   public addConstraint(parent: any, options: any) {
     this.Composite.addConstraint(this.Constraint.create(options));
   }
-
 }
-
