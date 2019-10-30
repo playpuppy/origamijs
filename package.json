@@ -2,9 +2,11 @@
   "name": "puppy-transpiler",
   "version": "1.0.0",
   "description": "Puppy Transpiler",
-  "main": "puppy.ts",
+  "main": "./build/index.ts",
+  "types": "./build/index.d.ts",
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "test": "jest"
   },
   "keywords": [
