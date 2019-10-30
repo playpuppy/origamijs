@@ -1766,7 +1766,7 @@ export const utest = (s: string) => {
   const src = { source: s };
   const code = compile(src);
   if (code.errors.length > 0) {
-    return code.errors[0].key;
+    return `${code.errors[0].key}: ${code.errors[0].subject}`;
   }
   const ss = code.code.split('\n');
   if (ss.length > 1) {
