@@ -2,7 +2,7 @@
   "name": "puppy-transpiler",
   "version": "1.0.4",
   "description": "Puppy Transpiler",
-  "main": "./build/index.ts",
+  "main": "./build/index.js",
   "types": "./build/index.d.ts",
   "scripts": {
     "build": "tsc",
