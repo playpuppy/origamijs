@@ -1,13 +1,16 @@
 {
   "name": "puppy-transpiler",
-  "version": "0.1.1",
-  "description": "",
-  "main": "index.js",
+  "version": "1.0.0",
+  "description": "Puppy Transpiler",
+  "main": "puppy.ts",
   "scripts": {
     "build": "tsc",
     "test": "jest"
   },
-  "keywords": [],
+  "keywords": [
+    "Puppy",
+    "Transpiler"
+  ],
   "author": "Kimio Kuramitsu",
   "license": "ISC",
   "devDependencies": {
@@ -35,5 +38,13 @@
     "testMatch": [
       "**/__tests__/*.+(ts|tsx|js)"
     ]
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/playpuppy/transpiler.git"
+  },
+  "bugs": {
+    "url": "https://github.com/playpuppy/transpiler/issues"
+  },
+  "homepage": "https://github.com/playpuppy/transpiler"
 }
