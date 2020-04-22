@@ -1,7 +1,7 @@
 {
-  "name": "puppy-transpiler",
-  "version": "1.0.4",
-  "description": "Puppy Transpiler",
+  "name": "origamijs",
+  "version": "0.1.0",
+  "description": "Origami Trans-Compiler",
   "main": "./build/index.js",
   "types": "./build/index.d.ts",
   "scripts": {
@@ -10,8 +10,10 @@
     "test": "jest"
   },
   "keywords": [
-    "Puppy",
-    "Transpiler"
+    "pegtree",
+    "puppy",
+    "konoha",
+    "peg"
   ],
   "author": "Kimio Kuramitsu",
   "license": "ISC",
@@ -34,7 +36,7 @@
     },
     "globals": {
       "ts-jest": {
-        "tsConfigFile": "tsconfig.json"
+        "tsConfig": "tsconfig.json"
       }
     },
     "testMatch": [
@@ -43,10 +45,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/playpuppy/transpiler.git"
+    "url": "git+https://github.com/playpuppy/origamijs.git"
   },
   "bugs": {
-    "url": "https://github.com/playpuppy/transpiler/issues"
+    "url": "https://github.com/playpuppy/origamijs/issues"
   },
-  "homepage": "https://github.com/playpuppy/transpiler"
+  "homepage": "https://github.com/playpuppy/origamijs"
 }
