@@ -580,6 +580,8 @@ class TypeVisitor {
 
 const typeVisitor = new TypeVisitor();
 
+/* symbol */
+
 export class Symbol {
   type: Type;
   source: ParseTree | null = null;
@@ -604,3 +606,8 @@ export class Symbol {
     return this.code + '(' + params.join(',') + ')'
   }
 }
+
+export class Packages {
+
+}
+

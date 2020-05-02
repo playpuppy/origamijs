@@ -836,7 +836,7 @@ export class ParseTree {
   urn_: string;
   subs_: ParseTree[];
 
-  public constructor(tag: string, inputs: string, spos = 0, epos = -1, urn = '(unknown source)') {
+  public constructor(tag: string, inputs: string='', spos = 0, epos = -1, urn = '(unknown source)') {
     this.tag_ = tag
     this.inputs_ = inputs
     this.spos_ = spos
@@ -871,6 +871,15 @@ export class ParseTree {
 
   public get(key: string | number): ParseTree {
     if (typeof key === 'string') {
+      if(key.indexOf(',') > 0) {
+        const keys = key.split(',')
+        for(const k of keys) {
+          if(this.has(k)) {
+            key = k
+            break
+          }
+        }
+      }
       const t = (this as any)[key];
       return (t instanceof ParseTree) ? t as ParseTree : this.newEmpty();
     }
