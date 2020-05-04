@@ -901,6 +901,22 @@ export class ParseTree {
     }
   }
 
+  public get2(key: number | string, key2: number | string, perror = (s:string)=>{}) {
+    const e = this.get(key)
+    if (!e.isEmpty()) {
+      return e
+    }
+    const e2 = this.get(key2)
+    if (!e2.isEmpty()) {
+      return e2
+    }
+    //this.perror(pt, 'UndefinedParseTree')
+    perror(`${key},${key2}`)
+    return e2
+  }
+
+
+
   public getNodeSize() {
     return this.subs_.length;
   }

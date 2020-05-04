@@ -1,11 +1,33 @@
+import { Type, Symbol } from './types';
+
 export const EntryPoint = '$v';
 export type SymbolList = ([string, string, string] | [string, string, string, any])[]
 
-export const rewiteCode = (key: string, code: string) => {
+const rewiteCode = (key: string, code: string) => {
   if (code.startsWith('$$')) {
     return `${EntryPoint}[${key}].` + code.substring(2)
   }
   return code
+}
+
+export const symbolMap = (module: Module, names?: { [key: string]: string }) => {
+  const ss: { [key: string]: Symbol } = {}
+  for (const symbol of module.symbols) {
+    const name = symbol[0]
+    if (names && !(name in names)) {
+      continue
+    }
+    const type = Type.parseOf(symbol[1])
+    const code = rewiteCode(module.entryPoint, symbol[2])
+    const key = type.isFuncType() ? `${name}@${type.paramTypes().length}` : name
+    if (symbol.length === 3) {
+      ss[key] = (new Symbol(type, code))
+    }
+    else {
+      ss[key] = (new Symbol(type, code, symbol[3]))
+    }
+  }
+  return ss
 }
 
 export const exportModule = (mod0: Module, entryPoint: any) =>{
@@ -14,6 +36,8 @@ export const exportModule = (mod0: Module, entryPoint: any) =>{
   mod.runtime = entryPoint
   return mod;
 }
+
+
 
 export class Module {
   entryPoint: string = ''
@@ -44,11 +68,11 @@ export class SitePackage {
     this.names.push(name)
   }
 
-  public load(name: string) {
+  public loadModule(name: string) {
     return this.map[name]
   }
 
-  public find(name: string) {
+  public findModule(name: string) {
     for(const pname of this.names) {
       for(const symbol of this.map[pname].symbols) {
         if(symbol[0] === name) {
