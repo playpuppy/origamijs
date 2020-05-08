@@ -575,8 +575,8 @@ const pFold = (edge: string, pf: PFunc, tag: string, shift: number) => {
       const pos = px.pos
       var pt = px.ptree;
       const prev = pt ? pt.prev : null;
-      pt = pt ? (prev ? new PTree(null, pt.tag, pt.epos, pt.epos, pt.child) : pt) : null;
-      px.ptree = new PTree(null, edge, pos, -pos, pt);
+      pt = pt ? (prev ? new PTree(null, pt.tag, pt.spos, pt.epos, pt.child) : pt) : null;
+      px.ptree = new PTree(null, edge, -1, -1, pt);
       if (pf(px)) {
         px.ptree = new PTree(prev, tag, pos, px.pos + shift, px.ptree);
         return true;
@@ -955,6 +955,23 @@ export class ParseTree {
     }
     return this.get(key).getToken();
   }
+
+  public trim(shift=0, end_shift=0): ParseTree {
+    if(shift!==0) {
+      const pos = this.spos_ + shift
+      if(0<= pos && pos < this.inputs_.length) {
+        this.spos_ = pos
+      }
+    }
+    if (end_shift !== 0) {
+      const pos = this.epos_ + end_shift
+      if (0 <= pos && pos < this.inputs_.length) {
+        this.epos_ = pos
+      }
+    }
+    return this
+  }
+
 
   public toString() {
     const sb: string[] = [];

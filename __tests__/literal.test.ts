@@ -1,6 +1,7 @@
 import { Origami, p, tmin, Type } from '../src/testcommons'
 
 const TyInt = Type.of('int')
+const BoolTy = Type.of('bool')
 
 test(`True`, () => {
   const env = new Origami()
@@ -87,6 +88,12 @@ test(`{key: "a", value: 1}`, () => {
   expect(tmin(code)).toStrictEqual(`{'key':"a",'value':1}`)
 });
 
+test(`true: bool`, () => {
+  const env = new Origami();
+  const [code, ty] = env.typeCheck(p('True'), BoolTy);
+  expect(code).toStrictEqual('true');
+  expect(ty).toStrictEqual(BoolTy);
+});
 
 test(`1: int`, () => {
   const env = new Origami()

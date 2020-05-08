@@ -19,7 +19,5 @@ print(a)
 
 test(`print2`, () => {
   const pt = PuppyParser(print2)
-  console.log(`${pt}`)
   expect(`${pt.get(0)}`).toStrictEqual(`${pt.get(1)}`);
 });
-

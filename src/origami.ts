@@ -1,6 +1,6 @@
 import { ParseTree } from './parser';
 import { Type, TypeEnv, Symbol } from './types';
-import { SitePackage, Module, symbolMap } from './modules';
+import { SitePackage, Module, symbolMap, EntryPoint } from './modules';
 
 const VoidType = Type.of('void')
 const BoolType = Type.of('bool')
@@ -10,7 +10,7 @@ const StrType = Type.of('str')
 const ObjectType = Type.of('object')
 const AnyType = Type.of('any')
 const InInfix = true
-const Async = { isAsync: 'true' }
+const Async = { isAsync: true }
 
 const quote = (s: string) => {
   s = s.replace(/'/g, "\\'")
@@ -137,10 +137,14 @@ abstract class CodeWriter {
   }
 
   protected pushIndent() {
+    this.pushLF()
     if(this.indentLevel>0) {
       const tab = this.token('\t')
       this.push(tab.repeat(this.indentLevel))
     }
+  }
+  protected decIndent() {
+    this.indentLevel=-1
   }
 
   public stringfy(pt: ParseTree): string {
@@ -199,6 +203,9 @@ const DefaultMethodMap: { [key: string]: string } = {
   'Name': 'acceptVar',
   'TrueExpr': 'acceptTrue',
   'FalseExpr': 'acceptFalse',
+  'IndexExpr': 'acceptGetIndex',
+  'GetExpr': 'acceptGetField',
+  'Get': 'acceptGetIndex',
 }
 
 export class Environment extends CodeWriter {
@@ -303,7 +310,7 @@ export class Environment extends CodeWriter {
     return undefined;
   }
 
-  protected asyncYield() {
+  protected setFuncBaseAsync() {
     const funcBase = this.getFuncBase()
     if(funcBase) {
       funcBase.isSync = true
@@ -360,28 +367,6 @@ export class Environment extends CodeWriter {
     return ty2
   }
 
-  protected pushY(pt: ParseTree, time = 0) {
-    if (time === 0) {
-      const funcBase = this.getFuncBase()
-      if (funcBase) {
-        if (funcBase.isSync === false) {
-          return
-        }
-        time = 1
-      }
-      else {
-        time = 200
-      }
-    }
-    const ayield = (time == 1) ? `if (Math.random() < 0.01) yield` : `yield`
-    const pos = pt.getPosition()
-    const row = pos.row * 1000 + time
-    if (this.prevRow !== row) {
-      this.pushIndent()
-      this.push(`${ayield} ${row}\n`);
-      this.prevRow = row;
-    }
-  }
 
   // error, handling
   public perror(pt: ParseTree, key: string, options?: any) {
@@ -417,8 +402,6 @@ const isInfix = (pt: ParseTree) => {
 }
 
 export const PuppyRuntimeModules = [
-  ['$global', '()', '$g[{0}]'],
-  ['$var', '()', 'var'],
 ]
 
 export class Origami extends Environment {
@@ -506,14 +489,13 @@ export class Origami extends Environment {
         return global.format([name]);
       }
     }
-    return this.safeLocalName(name) // FIXME
+    return this.safeLocalName(name)
   }
 
   safeLocalName(name: string) {
-    return name // FIXME
+    return name.replace('*', '')
   }
 
-  
   pushVarDecl(symbol: Symbol) {
     if(!symbol.code.startsWith('$')) {
       // if (this.hasSymbol('var')) {
@@ -577,53 +559,6 @@ export class Origami extends Environment {
     return Type.newParamType('list', type);
   }
 
-  sourceMap(pt: ParseTree) {
-    return '0'
-  }
-
-  acceptIndexExpr(pt: ParseTree) {
-    const [base, basety] = this.typeCheck(pt.get('recv'))
-    const [index, indexty] = this.typeCheck(pt.get('index'), IntType)
-    if(this.hasSymbol('getindex ')) {
-      this.pushS('getindex ')
-      const cs = [base, index, [this.sourceMap(pt)]]
-      this.pushP('(', cs, ')')
-    }
-    else {
-      this.push(base)
-      this.pushP('[', [index], ']')
-    }
-    return this.elementType(basety)
-  }
-
-  elementType(ty: Type) {
-    if(ty.isStringType()) {
-      return StrType
-    }
-    if (ty.is('list')) {
-      return ty.getParameterType(0)
-    }
-    return AnyType
-  }
-
-  acceptSetIndexExpr(pt: ParseTree) {
-    pt.tag_ = 'IndexExpr';  // see SelfAssign
-    const [base, basety] = this.typeCheck(pt.get('recv'))
-    const [index, indexty] = this.typeCheck(pt.get('index'), IntType)
-    const [right, rightty] = this.typeCheck(pt.get('index'), this.elementType(basety))
-    if (this.hasSymbol('setindex ')) {
-      this.pushS('setindex ')
-      const cs = [base, index, right, [this.sourceMap(pt)]]
-      this.pushP('(', cs, ')')
-    }
-    else {
-      this.push(base)
-      this.pushP('[', [index], ']')
-      this.pushS(' = ')
-      this.push(right)
-    }
-    return VoidType
-  }
 
   acceptAnd(pt: ParseTree) {
     this.pushT(pt.get2(0, 'left'), BoolType, InInfix)
@@ -742,7 +677,6 @@ export class Origami extends Environment {
       params.unshift(recv);  // recvを先頭に追加する
       return this.emitSymbolExpr(pt, symbol, params, options);
     }
-
     this.visit(recv)
     this.push('.')
     this.push(name)
@@ -756,10 +690,12 @@ export class Origami extends Environment {
     const retType = symbol.type.getReturnType()
     const InInfix = '+-*%<>=&|~@!?^'.indexOf(symbol.code[0]) !== -1
     //console.log(`infix ${InInfix} ${symbol.code}`)
+    var yieldFlag=false
     if(symbol.options && symbol.options.isAsync === true) {
-      if (this.hasSymbol('async-yield')) {
-        this.push('yield ()=>')
-        this.asyncYield()
+      if (this.hasSymbol('yield-async')) {
+        this.setFuncBaseAsync()
+        this.push('(yield ()=>')
+        yieldFlag = true
       }
     }
     const cs: string[] = []
@@ -785,11 +721,9 @@ export class Origami extends Environment {
     else {
       this.push(code)
     }
-    // if (symbol.options && symbol.options.isAsync) {
-    //   if (this.hasSymbol('$async-yield')) {
-    //     this.push(')')
-    //   }
-    // }
+    if (yieldFlag) {
+      this.push(')')
+    }
     return retType.resolved(tenv);
   }
 
@@ -798,7 +732,8 @@ export class Origami extends Environment {
     for(const e of pt.subNodes()) {
       const key = e.getToken('key,name');
       this.push(quote(key))
-      this.pushS(': ')
+      this.pushS(':')
+      this.pushSP()
       this.visit(e.get('value'))
       this.push(delim)
     }
@@ -814,7 +749,8 @@ export class Origami extends Environment {
         this.push(delim)
       }
       this.push(quote(key))
-      this.pushS(': ')
+      this.pushS(':')
+      this.pushSP()
       this.visit(e.get('value'))
       c += 1
     }
@@ -822,7 +758,44 @@ export class Origami extends Environment {
     return ObjectType
   }
 
-  acceptGetExpr(pt: ParseTree) {
+  acceptVarAssign(pt: ParseTree) {
+    this.visit(pt.get('left,name'))
+    this.pushSP()
+    this.pushS('=')
+    this.pushSP()
+    this.visit(pt.get('right,expr'))
+  }
+
+  //"[#SelfAssign left=[#Name 'a'] name=[# '+='] right=[#Int '1']]"
+  acceptSelfAssign(pt: ParseTree) {
+    const left = pt.get('left')
+    const infix = new ParseTree('Infix', pt.inputs_, pt.spos_, pt.epos_, pt.urn_);
+    infix.set('left', left)
+    infix.set('op', pt.get('name,op').trim(0,-1))
+    infix.set('right', pt.get('right'))
+    if (left.is('Name') || left.is('Var')) {
+      const assign = new ParseTree('VarAssign', pt.inputs_, pt.spos_, pt.epos_, pt.urn_)
+      assign.set('left', left)
+      assign.set('right', infix)
+      this.visit(assign)
+    }
+    if (left.is('Get') || left.is('GetExpr') || left.is('GetField')) {
+      const setf = new ParseTree('SetField', pt.inputs_, pt.spos_, pt.epos_, pt.urn_)
+      setf.set('name', left.get('name'))
+      setf.set('recv', left.get('recv'))
+      setf.set('expr', infix)
+      this.visit(setf)
+    }
+    if (left.is('Index') || left.is('GetIndex')) {
+      const setf = new ParseTree('SetIndex', pt.inputs_, pt.spos_, pt.epos_, pt.urn_)
+      setf.set('index', left.get('index'))
+      setf.set('recv', left.get('recv'))
+      setf.set('expr', infix)
+      this.visit(setf)
+    }
+  }
+
+  acceptGetField(pt: ParseTree) {
     const name = pt.getToken('name');
     // const recv = pt.getToken('recv');
     // if (env.isModule(recv)) {
@@ -831,8 +804,8 @@ export class Origami extends Environment {
     //   return symbol.ty;
     // }
     const [base, basety] = this.typeCheck(pt.get('recv'), ObjectType);
-    if (this.hasSymbol('get ')) {
-      this.pushS('get ')
+    if (this.hasSymbol('get-field')) {
+      this.pushS('get-field')
       const cs = [base, [quote(name)], [this.sourceMap(pt)]]
       this.pushP('(', cs, ')')
     }
@@ -864,17 +837,16 @@ export class Origami extends Environment {
     }
   }
 
-  acceptSetGetExpr(pt: ParseTree) {
-    pt.tag_ = 'GetExpr'; // see SelfAssign
+  acceptSetField(pt: ParseTree) {
     // const recv = t.tokenize('recv');
     // if (env.isModule(recv)) {
     //   env.checkImmutable(t.recv, null);
     // }
     const name = pt.getToken('name')
     const [base, basety] = this.typeCheck(pt.get('recv'), ObjectType)
-    const [right, rightty] = this.typeCheck(pt.get('right'), this.fieldType(basety, name))
-    if (this.hasSymbol('set ')) {
-      this.pushS('set ')
+    const [right, _] = this.typeCheck(pt.get('expr,right'), this.fieldType(basety, name))
+    if (this.hasSymbol('set-field')) {
+      this.pushS('set-field')
       const cs:string[][] = [base, [quote(name)], right, [this.sourceMap(pt)]]
       this.pushP('(', cs, ')')
     }
@@ -882,22 +854,114 @@ export class Origami extends Environment {
       this.push(base)
       this.push('.')
       this.push(name)
-      this.pushS(' = ')
+      this.pushSP()
+      this.pushS('=')
+      this.pushSP()
       this.push(right)
     }
     return VoidType
   }
 
+  sourceMap(pt: ParseTree) {
+    return '0'
+  }
+
+  /* index */
+
+  acceptGetIndex(pt: ParseTree) {
+    const [base, basety] = this.typeCheck(pt.get('recv'))
+    const [index, indexty] = this.typeCheck(pt.get('index'), IntType)
+    if (this.hasSymbol('get-index')) {
+      this.pushS('get-index')
+      const cs = [base, index, [this.sourceMap(pt)]]
+      this.pushP('(', cs, ')')
+    }
+    else {
+      this.push(base)
+      this.pushP('[', [index], ']')
+    }
+    return this.elementType(basety)
+  }
+
+  elementType(ty: Type) {
+    if (ty.isStringType()) {
+      return StrType
+    }
+    if (ty.is('list')) {
+      return ty.getParameterType(0)
+    }
+    return AnyType
+  }
+
+  acceptSetIndex(pt: ParseTree) {
+    const [base, basety] = this.typeCheck(pt.get('recv'))
+    const [index,] = this.typeCheck(pt.get('index'), IntType)
+    const [right,] = this.typeCheck(pt.get('index'), this.elementType(basety))
+    if (this.hasSymbol('set-index')) {
+      this.pushS('set-index')
+      const cs = [base, index, right, [this.sourceMap(pt)]]
+      this.pushP('(', cs, ')')
+    }
+    else {
+      this.push(base)
+      this.pushP('[', [index], ']')
+      this.pushSP()
+      this.pushS('=')
+      this.pushSP()
+      this.push(right)
+    }
+    return VoidType
+  }
+
+  /* yield */
+  // protected pushY(pt: ParseTree, time = 0) {
+  //   if (time === 0) {
+  //     const funcBase = this.getFuncBase()
+  //     if (funcBase) {
+  //       if (funcBase.isSync === false) {
+  //         return
+  //       }
+  //       time = 1
+  //     }
+  //     else {
+  //       time = 200
+  //     }
+  //   }
+  //   const ayield = (time == 1) ? `if (Math.random() < 0.01) yield` : `yield`
+  //   const pos = pt.getPosition()
+  //   const row = pos.row * 1000 + time
+  //   if (this.prevRow !== row) {
+  //     this.pushIndent()
+  //     this.push(`${ayield} ${row}\n`);
+  //     this.prevRow = row;
+  //   }
+  // }
+
+  pushYield(pt: ParseTree) {
+    const funcBase = this.getFuncBase()
+    if(this.hasSymbol('yield-time') && funcBase === undefined) {
+      const pos = pt.getPosition()
+      const rowTime = pos.row * 1000 + 100
+      this.pushIndent()
+      this.push(`yield ${rowTime}`)
+      return;
+    }
+    if(this.hasSymbol('yield-async') && pt.is('WhileStmt')) {
+      this.pushIndent()
+      this.push(`if (Math.random() < 0.01) yield 0`)
+    }
+  }
+
   /* statements */
 
-  block(pt: ParseTree, pretree?: ParseTree) {
+  makeBlock(pt: ParseTree, parent?: ParseTree) {
     if(!pt.is('Block')) {
       const block = new ParseTree('Block');
       block.append(pt)
       pt=block
     }
-    if(pretree && this.hasSymbol('async-yield')) {
-      pt.set('pretree', pretree);
+    if(parent) {
+      pt.set('parent', parent)
     }
     return pt;
   }
@@ -908,7 +972,7 @@ export class Origami extends Environment {
     this.pushSP()
     this.pushP('(', [cs], ')')
     this.pushSP()
-    this.visit(this.block(pt.get('then'), pt.get('cond')))
+    this.visit(this.makeBlock(pt.get('then'), pt.get('cond')))
     if (pt.has('elif')) {
       for (const stmt of pt.get('elif').subNodes()) {
         this.pushLF()
@@ -923,7 +987,7 @@ export class Origami extends Environment {
       this.pushIndent()
       this.pushS('else')
       this.pushSP()
-      this.visit(this.block(pt.get('else'), pt.get('cond')))
+      this.visit(this.makeBlock(pt.get('else'), pt.get('cond')))
       //this.visit(pt.get('else'))
     }
     return VoidType;
@@ -941,7 +1005,7 @@ export class Origami extends Environment {
     this.pushSP()
     const back = this.options.inLoop
     this.options.inLoop = true
-    this.visit(this.block(pt.get('body'), pt))
+    this.visit(this.makeBlock(pt.get('body'), pt))
     this.options.inLoop = back
     return VoidType
   }
@@ -953,7 +1017,7 @@ export class Origami extends Environment {
     this.push(')')
     const back = this.options.inLoop
     this.options.inLoop = true
-    this.visit(this.block(pt.get('body'), pt.get('cond')))
+    this.visit(this.makeBlock(pt.get('body'), pt))
     this.options.inLoop = back
     return VoidType
   }
@@ -980,19 +1044,18 @@ export class Origami extends Environment {
 
   acceptReturn(pt: ParseTree) {
     const funcBase = this.getFuncBase()
-    if(funcBase) {
-      funcBase.hasReturn = true
-      if(pt.has('expr')) {
-        this.pushS('return ')
-        this.pushSP()
-        this.pushT(pt.get('expr'), funcBase.returnType!);
-      }
-      else {
-        this.pushS('return ');
-      }
+    if(!funcBase) {
+      this.perror(pt, 'OnlyInFunction')
+      return VoidType
+    }
+    funcBase.hasReturn = true
+    if(pt.has('expr')) {
+      this.pushS('return')
+      this.pushSP()
+      this.pushT(pt.get('expr'), funcBase.returnType!);
     }
     else {
-      this.perror(pt, 'OnlyInFunction');
+      this.pushS('return');
     }
     return VoidType
   }
@@ -1002,6 +1065,7 @@ export class Origami extends Environment {
     const name = pt.getToken('name');
     const defined = this.getSymbol(name);
     if (defined) {
+      this.perror(pt, 'RedefinedName')
     }
     const lenv = this.newEnv();
     const names = [];
@@ -1014,24 +1078,46 @@ export class Origami extends Environment {
       names.push(symbol.code);
     }
     const funcBase = lenv.funcBase = new FuncBase(ptypes, lenv.newVarType(pt.get('name')))
-    const defun = this.setSymbol(name, new Symbol(funcBase.type, this.safeName(name), Async))
+    var defun = lenv.setSymbol(name, new Symbol(funcBase.type, this.safeName(name), Async))
+    //lenv.decIndent()
     const body = lenv.stringfy(pt.get('body'))
-    this.pushVarDecl(defun);
-    this.push(defun.format())
-    this.pushS(' = ')
-    if(funcBase.isSync) {
-      this.push('function*');
-    }
-    this.push(`(${names.join(',')})`)
-    if (!funcBase.isSync) {
-      this.push(' => ');
-      delete defun.options
-    }
-    this.push(body)
+    // check 
     if (!funcBase.hasReturn) {
       defun.type = Type.newFuncType(funcBase.type, VoidType)
     }
-    console.log(`DEFINED ${name} :: ${defun.type}`)
+    this.setSymbol(name, defun)
+    if (funcBase.isSync) {
+      this.pushVarDecl(defun);
+      this.push(defun.format())
+      this.pushS(' = ')
+      this.push('function*');
+      this.pushP('(', names,')')
+      this.pushSP()
+      this.push(body)
+    }
+    else {
+      this.pushVarDecl(defun);
+      this.push(defun.format())
+      this.pushS(' = ')
+      this.pushP('(', names, ')')
+      this.push(' => ');
+      this.push(body)
+      delete defun.options
+    }
+    if(defun.code.startsWith('$')) {
+      this.pushLF()
+      this.pushIndent()
+      this.push(`var ${name} = `)
+      this.pushP('(', names, ')')
+      this.push(' => ');
+      if (funcBase.isSync) {
+        this.pushP(`${EntryPoint}.__sync__(${defun.format()}(`, names, '))')      
+      }
+      else{
+        this.pushP(`${defun.format()}(`, names, ')')      
+      }
+    }
+    //console.log(`DEFINED ${name} :: ${defun.type}`)
     return VoidType
   }
 
@@ -1110,10 +1196,9 @@ export class Origami extends Environment {
 
   // Block
   acceptBlock(pt: ParseTree) {
-    this.pushS('{')
-    this.pushLF()
     const env = this.newEnv();
     env.acceptSource(pt);
+    this.pushS('{')
     this.push(env.buffers)
     this.pushIndent()
     this.pushS('}')
@@ -1123,14 +1208,13 @@ export class Origami extends Environment {
 
   // Source
   acceptSource(pt: ParseTree) {
-    if (pt.has('pretree')) {
-      this.pushY(pt.get('pretree'));
+    if (pt.has('parent')) {
+      this.pushYield(pt.get('parent'))
     }
     for (const stmt of pt.subNodes()) {
-      //env.emitYield(subtree, out2);
+      this.pushYield(stmt)
       this.pushIndent()
       this.visit(stmt)
-      this.pushLF()
     }
     return VoidType
   }

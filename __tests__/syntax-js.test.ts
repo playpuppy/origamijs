@@ -90,6 +90,26 @@ test(`U ifelif`, () => {
   expect(tmin(code)).toStrictEqual(`if(a>b){print(a)}elseif(a==b){print(a,b)}else{print(b)}`)
 })
 
+const succ = `
+def succ(n):
+  return n + 1
+`
+
+test(`local succ(n)`, () => {
+  const env = new Origami()
+  const code = env.stringfy(p(succ))
+  console.log(code)
+  expect(tmin(code)).toStrictEqual(`varsucc=(n)=>{returnn+1}`)
+})
+
+test(`global succ(n)`, () => {
+  const env = new Origami()
+  env.define('$', 'void', `${EntryPoint}['{0}']`)
+  env.define('yield-async', 'void', `yield`)
+  const code = env.stringfy(p(succ))
+  console.log(code)
+  expect(tmin(code)).toStrictEqual(`$v['succ']=(n)=>{returnn+1}varsucc=(n)=>$v['succ'](n)`)
+})
 
 const fibo = `
 def fibo(n):
@@ -107,11 +127,50 @@ test(`local fibo(n)`, () => {
 })
 
 test(`global fibo(n)`, () => {
+  const ans = `$v['fibo']=(n)=>{if((n==0)||(n==1)){return1}return$v['fibo'](n-1)+$v['fibo'](n-2)}varfibo=(n)=>$v['fibo'](n)`
   const env = new Origami()
   env.define('$', 'void', `${EntryPoint}['{0}']`)
   const code = env.stringfy(p(fibo))
   console.log(code)
-  expect(tmin(code)).toStrictEqual(`$v['fibo']=(n)=>{if((n==0)||(n==1)){return1}return$v['fibo'](n-1)+$v['fibo'](n-2)}`)
+  expect(tmin(code)).toStrictEqual(ans)
 })
+
+test(`async fibo(n)`, () => {
+  const ans = `$v['fibo']=function*(n){if((n==0)||(n==1)){return1}return(yield()=>$v['fibo'](n-1))+(yield()=>$v['fibo'](n-2))}varfibo=(n)=>$v.__sync__($v['fibo'](n))`
+  const env = new Origami()
+  env.define('$', 'void', `${EntryPoint}['{0}']`)
+  env.define('yield-async', 'void', `yield`)
+  const code = env.stringfy(p(fibo))
+  console.log(code)
+  expect(tmin(code)).toStrictEqual(ans)
+})
+  
+const fwhile = `
+def fwhile(n):
+  while 0 < n:
+    break
+  return 1
+`
+
+test(`local async fwhile(n)`, () => {
+  const ans = ``
+  const env = new Origami()
+  //env.define('$', 'void', `${EntryPoint}['{0}']`)
+  env.define('yield-async', 'void', `yield`)
+  const code = env.stringfy(p(fwhile))
+  console.log(code)
+  expect(tmin(code)).toStrictEqual(ans)
+})
+
+test(`global fwhile(n)`, () => {
+  const ans = ``
+  const env = new Origami()
+  env.define('$', 'void', `${EntryPoint}['{0}']`)
+  env.define('yield-async', 'void', `yield`)
+  const code = env.stringfy(p(fwhile))
+  console.log(code)
+  expect(tmin(code)).toStrictEqual(ans)
+})
+
 
 
