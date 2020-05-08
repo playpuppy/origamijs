@@ -1,15 +1,15 @@
 import { PuppyParser } from '../src/parser';
 
-test(`1`, () => {
+test(`1+1`, () => {
   const pt = PuppyParser('1+1')
-  console.log(`${pt}`)
+  //console.log(`${pt}`)
   expect(`${pt}`).toStrictEqual(`[#Source [#Infix right = [#Int '1'] name = [#Name '+'] left = [#Int '1']]]`);
 });
 
 test(`{}`, () => {
   const pt = PuppyParser('{}')
-  console.log(`${pt}`)
-  expect(`${pt}`).toStrictEqual(`todo`);
+  //console.log(`${pt}`)
+  expect(`${pt}`).toStrictEqual(`[#Source [#Data '{}']]`);
 });
 
 const print2 =`

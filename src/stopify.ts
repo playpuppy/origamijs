@@ -1,25 +1,10 @@
 
-export type SourceEvent = {
-
-}
 
 const HelloWorld = function*(vars: any) {
   console.log('Hello')
   yield 100;
   console.log('World')
   yield 100;
-}
-
-export class Code {
-  public symbols: any
-  //vars: any;
-  public main: (vars: any) => IterableIterator<any>;
-  public errors: SourceEvent[] = []
-  public codemap: any[] = []
-  public code: string = ''
-  constructor(main: (vars: any) => IterableIterator<any> = HelloWorld) {
-    this.main = main
-  }
 }
 
 export class Stopify {
@@ -34,9 +19,6 @@ export class Stopify {
   private trackingLine = (line: number) => { }
   private endingEvent = (ret: any) => {  }
 
-  public constructor() {
-  }
-  
   public syncExec(runtime: IterableIterator<any>) {
     this.runtimeStack = [runtime];
     while (this.runtimeStack.length > 0) {
@@ -143,7 +125,6 @@ export class Stopify {
     }
   }
 
-
   public stop() {
     if (!this.cps) {
       this.runtimeStack = [];
@@ -151,4 +132,6 @@ export class Stopify {
       this.cps = null;
     }
   }
+
 }
+

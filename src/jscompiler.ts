@@ -1,6 +1,8 @@
-import { ParseTree } from './parser';
+import { ParseTree, PuppyParser } from './parser';
 import { Type, TypeEnv, Symbol } from './types';
-import { SitePackage, Module, symbolMap, EntryPoint } from './modules';
+import { Module, symbolMap, EntryPoint} from './modules';
+import { Environment, FunctionContext } from './generator'
+import { quote, normalToken, stringfy, isInfix } from './origami-utils';
 
 const VoidType = Type.of('void')
 const BoolType = Type.of('bool')
@@ -12,409 +14,14 @@ const AnyType = Type.of('any')
 const InInfix = true
 const Async = { isAsync: true }
 
-const quote = (s: string) => {
-  s = s.replace(/'/g, "\\'")
-  return `'${s}'`
-}
 
-const normalToken = (s: string) => {
-  return s
-}
-
-// const findTree = (pt:ParseTree, match: (pt: ParseTree) => boolean) : ParseTree | undefined => {
-//   if(match(pt)) {
-//     return pt
-//   }
-//   for(const t of pt.subNodes()) {
-//     const rt = findTree(t, match)
-//     if(rt) {
-//       return rt
-//     }
-//   }
-//   for (const key of pt.keys()) {
-//     const rt = findTree(pt.get(key), match)
-//     if (rt) {
-//       return rt
-//     }
-//   }
-//   return undefined
-// }
-
-class CompilerOptions {
-  site: SitePackage | undefined = undefined;
-  modules: Module[] = []
-  tenv: TypeEnv = new TypeEnv()
-  errors: any[] = []
-  indent = 0
-  inLoop = false
-  varTypeId = 0
-  newVarType(pt: ParseTree) {
-    return Type.newVarType(pt.getToken(), this.varTypeId++);
-  }
-
-  loadModule(name: string) {
-    if (this.site) {
-      const module = this.site.loadModule(name)
-      if (module) {
-        this.modules.push(module)
-        return module;
-      }
-    }
-  }
-}
-
-const stringfy = (buffers: string[]) => {
-  return buffers.join('')
-}
-
-abstract class CodeWriter {
-  protected options: CompilerOptions
-  protected buffers: string[]
-  protected indentLevel:number
-
-  constructor(parent?: CodeWriter) {
-    if(parent) {
-      this.options = parent.options
-      // this.buffers = parent.buffers
-      this.indentLevel = parent.indentLevel+1
-    }
-    else {
-      this.options = new CompilerOptions()
-      this.indentLevel = 0
-    }
-    this.buffers = []
-  }
-
-  protected abstract visit(pt: ParseTree): Type
-
-  protected abstract getSymbol(key:string): Symbol | undefined
-
-  /* buffer */
-
-  protected push(c: string | string[]) {
-    if(Array.isArray(c)) {
-      this.buffers = this.buffers.concat(c)
-    }
-    else {
-      this.buffers.push(c)
-    }
-  }
-
-  protected pushLF() {
-    if (this.buffers.length === 0 || !this.buffers[this.buffers.length - 1].endsWith('\n')) {
-      this.buffers.push('\n')
-    }
-  }
-
-  protected pushSP() {
-    if (this.buffers.length === 0 || !this.buffers[this.buffers.length - 1].endsWith(' ')) {
-      this.buffers.push(' ')
-    }
-  }
-
-  protected token(key: string) {
-    const symbol = this.getSymbol(key);
-    return (symbol) ? symbol.format() : key    
-  }
-
-  protected pushS(key: string) {
-    this.push(this.token(key))
-  }
-
-  protected pushP(open: string, cs: string[] | string[][] | ParseTree[], close: string) {
-    const delim = this.token(', ')
-    this.pushS(open)
-    for(var i = 0; i < cs.length; i+=1) {
-      if(i>0) this.push(delim)
-      if(cs[i] instanceof ParseTree) {
-        this.visit(cs[i] as ParseTree)
-      }
-      else {
-        this.push(cs[i] as string)
-      }
-    }
-    this.pushS(close)
-  }
-
-  protected pushIndent() {
-    this.pushLF()
-    if(this.indentLevel>0) {
-      const tab = this.token('\t')
-      this.push(tab.repeat(this.indentLevel))
-    }
-  }
-  protected decIndent() {
-    this.indentLevel=-1
-  }
-
-  public stringfy(pt: ParseTree): string {
-    const buffers = this.buffers
-    this.buffers = []
-    this.visit(pt)
-    const cs = this.buffers
-    this.buffers = buffers
-    return stringfy(cs)
-  }
-
-  // protected pushSymbol(key: string, suffix = ' ') {
-  //   const symbol = this.getSymbol(`$${key}`);
-  //   const s = (symbol) ? symbol.format() : key
-  //   this.push(s + suffix)
-  // }
-
-  // protected pushOp(c: string) {
-  //   this.buffers.push(` ${c} `)
-  // }
-
-  // protected incIndent() {
-  //   this.options.indent += 1
-  // }
-
-  // protected decIndent() {
-  //   this.options.indent -= 1
-  // }
-
-  // public stringfy(pt: ParseTree): string {
-  //   const buffers = this.buffers;
-  //   this.buffers = []
-  //   const vat = this.visit(pt)
-  //   const code = this.buffers.join('');
-  //   this.buffers = buffers;
-  //   return code;
-  // }
-
-
-}
-
-
-class FuncBase {
-  name = ''
-  hasReturn = false
-  isSync = false
-  returnType: Type
-  type: Type
-  constructor(paramTypes: Type[], returnType: Type) {
-    this.returnType = returnType;
-    this.type = Type.newFuncType(Type.newTupleType(...paramTypes), returnType);
-  }
-}
-
-const DefaultMethodMap: { [key: string]: string } = {
-  'Name': 'acceptVar',
-  'TrueExpr': 'acceptTrue',
-  'FalseExpr': 'acceptFalse',
-  'IndexExpr': 'acceptGetIndex',
-  'GetExpr': 'acceptGetField',
-  'Get': 'acceptGetIndex',
-}
-
-export class Environment extends CodeWriter {
-  //options: CompilerOptions
-  parent: Environment | undefined
-  env: { [key: string]: Symbol } = {}
-
-  constructor(parent?: Environment) {
-    super(parent)
-    this.parent = parent
-  }
-
-  protected getAcceptMethod(pt: ParseTree): string {
-    var tag = pt.getTag();
-    const method = DefaultMethodMap[tag];
-    if (!method) {
-      const newmethod = `accept${tag}`;
-      DefaultMethodMap[tag] = newmethod;
-      return newmethod;
-    }
-    return method;
-  }
-
-  protected visit(pt: ParseTree): Type {
-    const method = this.getAcceptMethod(pt);
-    if (method in this) {
-      const ty = (this as any)[method](pt);
-      return ty;
-    }
-    return this.undefinedParseTree(pt);
-  }
-
-  undefinedParseTree(pt: ParseTree) {
-    this.push(`${pt}`)
-    return this.untyped();
-  }
-
-  public setSitePackage(site: SitePackage) {
-    this.options.site = site
-  }
-
-  public getSymbol(key: string): Symbol | undefined {
-    var cur: Environment | undefined = this
-    while (cur) {
-      const symbol = cur.env[key];
-      if (symbol) {
-        return symbol;
-      }
-      cur = cur.parent;
-    }
-    return undefined;
-  }
-
-  public hasSymbol(key: string) {
-    return this.getSymbol(key) !== undefined
-  }
-
-  public setSymbol(key: string, symbol: Symbol) {
-    this.env[key] = symbol;
-    return symbol;
-  }
-
-  public define(key: string, type: Type|string, code?: string, options?: any) {
-    if(typeof type === 'string') {
-      type  = Type.parseOf(type)
-    }
-    if(type.isFuncType()) {
-      key = `${key}@${type.paramTypes().length}`
-    }
-    //console.log(`define ${key} ${type}`)
-    return this.setSymbol(key, new Symbol(type, code, options))
-  }
-
-  public loadModule(modules: any[]) {
-    for(const mod of modules) {
-      const name = mod[0]
-      const ty = Type.parseOf(mod[1])
-      const code = mod[2]
-      const options = mod[3]
-      const symbol = new Symbol(ty, code, options)
-      if(ty.isFuncType()) {
-        const key = `${name}@${ty.paramTypes().length}`
-        this.setSymbol(key, symbol)
-      }
-      else {
-        this.setSymbol(name, symbol)
-      }
-    }
-  }
-
-  /* funcBase */
-  funcBase: FuncBase | undefined = undefined
-
-  protected getFuncBase() {
-    var cur: Environment | undefined = this
-    while (cur) {
-      if (cur.funcBase) {
-        return cur.funcBase;
-      }
-      cur = cur.parent;
-    }
-    return undefined;
-  }
-
-  protected setFuncBaseAsync() {
-    const funcBase = this.getFuncBase()
-    if(funcBase) {
-      funcBase.isSync = true
-    }
-  }
-
-
-  protected newTypeEnv() {
-    return this.options.tenv;
-  }
-
-  protected newVarType(pt: ParseTree) {
-    return this.options.newVarType(pt);
-  }
-
-  public typeCheck(pt: ParseTree, pat?: Type, tenv?: TypeEnv, options?: any): [string[], Type] {
-    if (pat && pat.isBoolType()) {
-      // if (t.tag === 'Infix' && t.tokenize('name') === '=') {
-      //   this.pwarn(t, 'BadAssign');
-      //   t.tag = 'Eq';
-      // }
-    }
-    const buffers = this.buffers;
-    this.buffers = []
-    const vat = this.visit(pt)
-    const code = this.buffers;
-    this.buffers = buffers;
-    if (pat) {
-      tenv = tenv || this.options.tenv
-      const matched = pat.match(tenv, vat);
-      //console.log(`matched ${pat} ${vat} => ${matched}`)
-      if (matched === null) {
-        options = options || {}
-        options.requestType = pat
-        options.resultType = vat
-        this.perror(pt, 'TypeError', options);
-        return [code, pat];
-      }
-      return [code, matched.resolved(tenv)];
-    }
-    return [code, vat];
-  }
-
-  private prevRow = -1;
-
-  protected pushT(pt: ParseTree, ty?: Type, infix = false) {
-    const [cs, ty2] = this.typeCheck(pt, ty)
-    if (infix && isInfix(pt)) {
-      this.pushP('(', [cs], ')')
-    }
-    else {
-      this.push(cs)
-    }
-    return ty2
-  }
-
-
-  // error, handling
-  public perror(pt: ParseTree, key: string, options?: any) {
-    const e = { key: key, source: pt };
-    if (options) {
-      Object.assign(e, options);
-    }
-    this.options.errors.push(e);
-    //console.log(e);
-  }
-
-  public testHasError(key: string) {
-    for(const e of this.options.errors) {
-      if(e.key.startsWith(key)) {
-        return true
-      }
-    }
-    return false
-  }
-
-  untyped(): Type {
-    return AnyType
-  }
-
-}
-
-const isInfix = (pt: ParseTree) => {
-  const tag = pt.getTag()
-  if (tag === 'Infix' || tag === 'And' || tag === 'Or') {
-    return true;
-  }
-  return false;
-}
-
-export const PuppyRuntimeModules = [
-]
-
-export class Origami extends Environment {
+export class OrigamiJS extends Environment {
   constructor(parent?: Environment) {
     super(parent)
   }
 
   protected newEnv() {
-    return new Origami(this)
-  }
-
-  isStopify() {
-    return true;
+    return new OrigamiJS(this)
   }
 
   acceptTrue(pt: ParseTree) {
@@ -476,13 +83,9 @@ export class Origami extends Environment {
     }
     return VoidType
   }
-
-  inGlobalScope() {
-    return !(this.options.inLoop || this.getFuncBase() !== undefined)
-  }
   
   safeName(name: string) {    
-    if(this.inGlobalScope()) {
+    if(this.inGlobal() && !this.inLocal()) {
       const global = this.getSymbol('$')
       //console.log(`global ${global}`)
       if (global) {
@@ -521,8 +124,8 @@ export class Origami extends Environment {
     return Type.newTupleType(...types)
   }
 
-  acceptString(pt: ParseTree) {
-    this.push(pt.getToken())  // FIXME
+  acceptQString(pt: ParseTree) {
+    this.push(pt.getToken())
     return StrType
   }
 
@@ -631,8 +234,8 @@ export class Origami extends Environment {
     const key = `${name}@${params.length}`
     //console.log(`${pt} ${name} ${key}`)
     var symbol = this.getSymbol(key)
-    if (!symbol && this.options.site) {
-      const moduleName = this.options.site.findModule(name)
+    if (!symbol && this.lang) {
+      const moduleName = this.lang.findModuleFromSymbol(name)
       if(moduleName) {
         this.importModule(moduleName, {name})
         var symbol = this.getSymbol(key)
@@ -693,7 +296,7 @@ export class Origami extends Environment {
     var yieldFlag=false
     if(symbol.options && symbol.options.isAsync === true) {
       if (this.hasSymbol('yield-async')) {
-        this.setFuncBaseAsync()
+        this.funcBase.foundAsync = true
         this.push('(yield ()=>')
         yieldFlag = true
       }
@@ -938,8 +541,7 @@ export class Origami extends Environment {
   // }
 
   pushYield(pt: ParseTree) {
-    const funcBase = this.getFuncBase()
-    if(this.hasSymbol('yield-time') && funcBase === undefined) {
+    if (this.inGlobal() && this.hasSymbol('yield-time')) {
       const pos = pt.getPosition()
       const rowTime = pos.row * 1000 + 100
       this.pushIndent()
@@ -994,19 +596,16 @@ export class Origami extends Environment {
   }
 
   acceptWhileStmt(pt: ParseTree) {
-    const funcBase = this.getFuncBase()
-    if (funcBase) {
-      funcBase.isSync = true;
-    }
+    this.funcBase.foundAsync = true
     const [cs,] = this.typeCheck(pt.get('cond'), BoolType)
     this.pushS('while')
     this.pushSP()
     this.pushP('(', [cs], ')')
     this.pushSP()
-    const back = this.options.inLoop
-    this.options.inLoop = true
+    const loopLevel = this.funcBase.loopLevel
+    this.funcBase.loopLevel = loopLevel + 1
     this.visit(this.makeBlock(pt.get('body'), pt))
-    this.options.inLoop = back
+    this.funcBase.loopLevel = loopLevel
     return VoidType
   }
 
@@ -1015,16 +614,16 @@ export class Origami extends Environment {
     this.push('(')
     this.pushT(pt.get('cond'), BoolType)
     this.push(')')
-    const back = this.options.inLoop
-    this.options.inLoop = true
+    const loopLevel = this.funcBase.loopLevel
+    this.funcBase.loopLevel = loopLevel + 1
     this.visit(this.makeBlock(pt.get('body'), pt))
-    this.options.inLoop = back
+    this.funcBase.loopLevel = loopLevel
     return VoidType
   }
 
   acceptContinue(pt: ParseTree) {
-    if (this.options.inLoop) {
-      this.pushS('continue ')
+    if (this.funcBase.loopLevel > 0) {
+      this.pushS('continue')
     }
     else {
       this.perror(pt, 'OnlyInLoop')
@@ -1033,8 +632,8 @@ export class Origami extends Environment {
   }
 
   acceptBreak(pt: ParseTree) {
-    if (this.options.inLoop) {
-      this.pushS('break ')
+    if (this.funcBase.loopLevel > 0) {
+      this.pushS('break')
     }
     else {
       this.perror(pt, 'OnlyInLoop')
@@ -1043,16 +642,15 @@ export class Origami extends Environment {
   }
 
   acceptReturn(pt: ParseTree) {
-    const funcBase = this.getFuncBase()
-    if(!funcBase) {
+    if(this.inGlobal()) {
       this.perror(pt, 'OnlyInFunction')
       return VoidType
     }
-    funcBase.hasReturn = true
+    this.funcBase.hasReturn = true
     if(pt.has('expr')) {
       this.pushS('return')
       this.pushSP()
-      this.pushT(pt.get('expr'), funcBase.returnType!);
+      this.pushT(pt.get('expr'), this.funcBase.returnType);
     }
     else {
       this.pushS('return');
@@ -1077,7 +675,7 @@ export class Origami extends Environment {
       ptypes.push(ptype);
       names.push(symbol.code);
     }
-    const funcBase = lenv.funcBase = new FuncBase(ptypes, lenv.newVarType(pt.get('name')))
+    const funcBase = lenv.funcBase = new FunctionContext(name, ptypes, lenv.newVarType(pt.get('name')))
     var defun = lenv.setSymbol(name, new Symbol(funcBase.type, this.safeName(name), Async))
     //lenv.decIndent()
     const body = lenv.stringfy(pt.get('body'))
@@ -1086,7 +684,7 @@ export class Origami extends Environment {
       defun.type = Type.newFuncType(funcBase.type, VoidType)
     }
     this.setSymbol(name, defun)
-    if (funcBase.isSync) {
+    if (funcBase.foundAsync) {
       this.pushVarDecl(defun);
       this.push(defun.format())
       this.pushS(' = ')
@@ -1110,8 +708,8 @@ export class Origami extends Environment {
       this.push(`var ${name} = `)
       this.pushP('(', names, ')')
       this.push(' => ');
-      if (funcBase.isSync) {
-        this.pushP(`${EntryPoint}.__sync__(${defun.format()}(`, names, '))')      
+      if (funcBase.foundAsync) {
+        this.pushP(`${EntryPoint}.$__sync__(${defun.format()}(`, names, '))')      
       }
       else{
         this.pushP(`${defun.format()}(`, names, ')')      
@@ -1154,16 +752,16 @@ export class Origami extends Environment {
     // if (name === 'puppy2d') {
     //   this.autoPuppyMode = false;
     // }
-    const module = this.options.loadModule(name)
+    const module = this.loadModule(name)
     if(module) {
       return module;
     }
-    this.perror(pt, 'UnknownPackageName');
+    this.perror(pt, 'UnknownModuleName');
     return undefined;
   }
 
   importModule(name: string, names?: { [key: string]: string }) {
-    const module = this.options.loadModule(name)
+    const module = this.loadModule(name)
     if (module) {
       const symbols = symbolMap(module)
       for (const key of Object.keys(symbols)) {
@@ -1219,11 +817,10 @@ export class Origami extends Environment {
     return VoidType
   }
 
-  public compile(source: string, parser: (s: string) => ParseTree) {
+  public compile(source: string, parser = PuppyParser) {
     const pt = parser(source)
     this.visit(pt)
     return stringfy(this.buffers)
   }
-
 
 }

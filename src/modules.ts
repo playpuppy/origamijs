@@ -1,6 +1,10 @@
-import { Type, Symbol } from './types';
+import { Type, Symbol } from './types'
+import { ParseTree } from './parser'
+import { Stopify } from './stopify'
 
 export const EntryPoint = '$v';
+export const safeSymbol = (symbol: string) => `$__${symbol}`
+
 export type SymbolList = ([string, string, string] | [string, string, string, any])[]
 
 const rewiteCode = (key: string, code: string) => {
@@ -18,7 +22,7 @@ export const symbolMap = (module: Module, names?: { [key: string]: string }) => 
       continue
     }
     const type = Type.parseOf(symbol[1])
-    const code = rewiteCode(module.entryPoint, symbol[2])
+    const code = rewiteCode(module.entryKey, symbol[2])
     const key = type.isFuncType() ? `${name}@${type.paramTypes().length}` : name
     if (symbol.length === 3) {
       ss[key] = (new Symbol(type, code))
@@ -30,52 +34,39 @@ export const symbolMap = (module: Module, names?: { [key: string]: string }) => 
   return ss
 }
 
-export const exportModule = (mod0: Module, entryPoint: any) =>{
-  const mod = Object.create(mod0)
-  entryPoint[mod0.entryPoint] = mod
-  mod.runtime = entryPoint
-  return mod;
-}
+export class Language {
+  uniqueModuleId = 0
+  map: { [key: string]: Module } = {}
+  names: string[] = []
+  autoModules: Module[] = []
 
-
-
-export class Module {
-  entryPoint: string = ''
-  public symbols: SymbolList = []
-  public runtime: any = undefined
-  public constructor(symbols:SymbolList) {
-    this.symbols = symbols
-  }
-
-  protected __raise__(key: string, cmap: number|undefined, options= {}) {
-    if(this.runtime) {
-      console.log(key, options)
+  public constructor(...defs: [string, Module][]) {
+    for(const def of defs) {
+      const [name, mod] = def
+      const module = Object.create(mod)
+      module.entryKey = `$${name}${this.uniqueModuleId++}`
+      if(name === '') {
+        this.autoModules.push(module)
+      }
+      else{
+        this.map[name] = module
+        this.names.push(name)
+      }      
     }
   }
-}
 
-
-export class SitePackage {
-  uniqueModulesId = 0
-  map: {[key:string]: Module} = {}
-  names: string[] = []
-  
-  public define(name: string, mod: Module) {
-    const mod2 = Object.create(mod)
-    mod2.entryPoint = `$${this.uniqueModulesId++}`
-    mod2.symbols = mod.symbols
-    this.map[name] = mod2
-    this.names.push(name)
+  public initModules() {
+    return Array.from(this.autoModules)
   }
 
   public loadModule(name: string) {
     return this.map[name]
   }
 
-  public findModule(name: string) {
-    for(const pname of this.names) {
-      for(const symbol of this.map[pname].symbols) {
-        if(symbol[0] === name) {
+  public findModuleFromSymbol(name: string) {
+    for (const pname of this.names) {
+      for (const symbol of this.map[pname].symbols) {
+        if (symbol[0] === name) {
           return pname;
         }
       }
@@ -83,6 +74,80 @@ export class SitePackage {
     return undefined;
   }
 
+}
+
+export class Module {
+  entryKey: string = ''
+  public symbols: SymbolList = []
+  public context: any = undefined
+
+  public constructor(symbols:SymbolList) {
+    this.symbols = symbols
+  }
+
+  __init__(context: any) {
+
+  }
+
+  __raise__(key: string, cmap: number|undefined, options= {}) {
+    if(this.context) {
+      console.log(key, options)
+    }
+  }
+
+}
+
+const exportModule = (module: Module, context: any) => {
+  module = Object.create(module)
+  context[module.entryKey] = module
+  module.context = context
+  return module
+}
+
+const sync = (runtime: IterableIterator<any>) => {
+  const stopify = new Stopify()
+  return stopify.syncExec(runtime)
+}
+
+export type SourceEvent = {
+  key: string
+  source: ParseTree
+}
+
+export type Executable = (vars: any) => IterableIterator<any>
+
+export const generate = (source: string) => {
+  return new Function(`
+function* (${EntryPoint}) {
+  ${source}
+}  
+  `) as Executable
+} 
+
+export class Code {
+  public symbols: any
+  public modules: Module[] = []
+  public codemap: ParseTree[] = []
+  public errors: SourceEvent[] = []
+  public compiled: string = ''
+  public main: Executable | undefined = undefined
+
+  public getExecutable() {
+    if (!this.main) {
+      this.main = generate(this.compiled)
+    }
+    return this.main
+  }
+
+  public newRuntimeContext(context: any) {
+    for (var module of this.modules) {
+      module = exportModule(module, context)
+      module.__init__(context)
+    }
+    context[safeSymbol('codemap')] = this.codemap
+    context[safeSymbol('sync')] = sync
+    return context
+  }
 
 }
 

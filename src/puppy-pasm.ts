@@ -1170,25 +1170,24 @@ export class PAsm {
   }
 }
 
-
 //-------------------------------------------------------------- 
 //import { PAsm, ParseTree } from 'pegtree';
 
 export const generate = PAsm.generate;
 
-export const TPEG = (peg?: any): { [key: string]: PFunc } => {
+export const TPEG = (peg?: any) => {
   if (peg === undefined) {
     peg = {}
   }
   pRule(peg,"S",pRange(" \t​\v\r　",""));
-  pRule(peg,"BLOCKCOMMENT",pOre2(pSeq3(pChar("/*"),pMany(pSeq2(pNotChar("*/"),pAny())),pChar("*/")),pSeq3(pChar("(*"),pMany(pSeq2(pNotChar("*)"),pAny())),pChar("*)"))));
+  pRule(peg,"BLOCKCOMMENT",pSeq3(pChar("/*"),pMany(pSeq2(pNotChar("*/"),pAny())),pChar("*/")));
   pRule(peg,"EOF",pNot(pAny()));
   pRule(peg,"W",pRange("_","AZaz09"));
-  pRule(peg,"HIRA",pRange("","ぁん"));
+  pRule(peg,"Defined",pSeq3(pChar("「"),pNode(pOneMany(pSeq2(pNotChar("」"),pAny())),"Name",0),pChar("」")));
   pRule(peg,"KATA",pRange("","ァヶ"));
   pRule(peg,"KANJI",pRange("々〇〻ー","㐀䶵一龠"));
+  pRule(peg,"HIRA",pRange("","ぁん"));
   pRule(peg,"INDENT",pSeq2(pChar("\n"),pOneManyRange(" \t　","")));
-  pRule(peg,"DELIM",pRange(".:+-*/%<>=!(){}[],\n",""));
   pRule(peg,"PRE",pRange("+-~＋ー〜",""));
   pRule(peg,"HEX",pRange("","afAF09"));
   pRule(peg,"DQ",pRange("\"”“＂",""));
@@ -1199,11 +1198,12 @@ export const TPEG = (peg?: any): { [key: string]: PFunc } => {
   pRule(peg,"SUM",pRange("+-|＋ー｜",""));
   pRule(peg,"LF",pOre2(pChar("\n"),pRef(peg,"EOF")));
   pRule(peg,"NAME",pSeq2(pRange("_","AZaz"),pManyRange("_","AZaz09")));
+  pRule(peg,"NOT",pOre2(pSeq2(pChar("not"),pNotRange("_","AZaz09")),pRange("!！","")));
   pRule(peg,"ESCAPE",pSeq2(pChar("\\"),pOre(pSeq2(pEmpty(),pRange("\'\"\\bfnrt","")),pSeq4(pEmpty(),pRange("","03"),pRange("","07"),pRange("","07")),pSeq3(pEmpty(),pRange("","07"),pRange("","07")),pSeq2(pEmpty(),pRange("","07")),pSeq(pEmpty(),pRange("uU",""),pRange("","afAF09"),pRange("","afAF09"),pRange("","afAF09"),pRange("","afAF09")))));
   pRule(peg,"EXPONENT",pSeq4(pRange("eE",""),pOptionRange("+-",""),pNotChar("_"),pOneManyRange("_","09０９")));
   pRule(peg,"HEXADECIMAL",pSeq4(pChar("0"),pRange("xX",""),pRange("","afAF09"),pMany(pSeq2(pManyChar("_"),pRange("","afAF09")))));
   pRule(peg,"DECIMAL",pSeq3(pNotChar("_"),pRange("_","09０９"),pManyRange("_","09０９")));
-  pRule(peg,"EQ",pOre(pSeq2(pChar("="),pOre2(pSeq2(pChar("="),pNotChar("=")),pSeq2(pEmpty(),pNotChar("=")))),pSeq2(pChar("＝"),pOre2(pSeq2(pChar("＝"),pNotChar("＝")),pSeq2(pEmpty(),pNotChar("＝")))),pSeq2(pChar("!="),pNotChar("=")),pSeq2(pChar("！＝"),pNotChar("＝")),pSeq2(pChar("<"),pOre2(pSeq2(pChar("="),pNotChar("=")),pSeq2(pEmpty(),pNotChar("<")))),pSeq2(pChar("＜"),pOre2(pSeq2(pChar("＝"),pNotChar("＝")),pSeq2(pEmpty(),pNotChar("＜")))),pSeq2(pChar(">"),pOre2(pSeq2(pChar("="),pNotChar("=")),pSeq2(pEmpty(),pNotChar(">")))),pSeq2(pChar("＞"),pOre2(pSeq2(pChar("＝"),pNotChar("＝")),pSeq2(pEmpty(),pNotChar("＞")))),pSeq2(pChar("in"),pRange(" \t​\v\r　",""))));
+  pRule(peg,"EQ",pOre(pSeq2(pChar("="),pOre2(pSeq2(pChar("="),pNotChar("=")),pSeq2(pEmpty(),pNotChar("=")))),pSeq2(pChar("＝"),pOre2(pSeq2(pChar("＝"),pNotChar("＝")),pSeq2(pEmpty(),pNotChar("＝")))),pSeq2(pChar("!="),pNotChar("=")),pSeq2(pChar("！＝"),pNotChar("＝")),pSeq2(pChar("<"),pOre2(pSeq2(pChar("="),pNotChar("=")),pSeq2(pEmpty(),pNotChar("<")))),pSeq2(pChar("＜"),pOre2(pSeq2(pChar("＝"),pNotChar("＝")),pSeq2(pEmpty(),pNotChar("＜")))),pSeq2(pChar(">"),pOre2(pSeq2(pChar("="),pNotChar("=")),pSeq2(pEmpty(),pNotChar(">")))),pSeq2(pChar("＞"),pOre2(pSeq2(pChar("＝"),pNotChar("＝")),pSeq2(pEmpty(),pNotChar("＞")))),pSeq2(pChar("in"),pNotRange("_","AZaz09"))));
   pRule(peg,"AND",pOre3(pSeq2(pChar("and"),pNotRange("_","AZaz09")),pChar("&&"),pChar("＆＆")));
   pRule(peg,"OR",pOre3(pSeq2(pChar("or"),pNotRange("_","AZaz09")),pChar("||"),pChar("｜｜")));
   pRule(peg,"LINECOMMENT",pSeq2(pRange("#＃",""),pMany(pSeq2(pNot(pRef(peg,"LF")),pAny()))));
@@ -1215,18 +1215,18 @@ export const TPEG = (peg?: any): { [key: string]: PFunc } => {
   pRule(peg,"__",pMany(pOre3(pRange("\r ​　","\t\v"),pRef(peg,"BLOCKCOMMENT"),pRef(peg,"LINECOMMENT"))));
   pRule(peg,"EOL",pSeq3(pRef(peg,"_"),pRef(peg,"LF"),pMany(pSeq2(pRef(peg,"_"),pRef(peg,"LF")))));
   pRule(peg,"Identifier",pSeq2(pNode(pRef(peg,"NAME"),"Name",0),pRef(peg,"_")));
-  pRule(peg,"IdentifierLFP",pSeq2(pNode(pSeq2(pOneManyRange("_々〇〻ー","ぁんァヶ㐀䶵一龠"),pManyRange("_","AZaz09")),"NameOrLFP",0),pRef(peg,"_")));
-  pRule(peg,"\";\"",pOneMany(pSeq2(pRange(";；",""),pRef(peg,"_"))));
+  pRule(peg,"UIdentifier",pSeq2(pNode(pSeq2(pOneManyRange("_々〇〻ー","ぁんァヶ㐀䶵一龠"),pManyRange("_","AZaz09")),"UName",0),pRef(peg,"_")));
   pRule(peg,"\"(\"",pSeq2(pRange("(（",""),pRef(peg,"__")));
-  pRule(peg,"\":\"",pSeq2(pRange(":：",""),pRef(peg,"_")));
-  pRule(peg,"\",\"",pSeq2(pRange(",，、",""),pRef(peg,"_")));
   pRule(peg,"\")\"",pSeq2(pRange(")）",""),pRef(peg,"_")));
-  pRule(peg,"NOT",pOre2(pSeq3(pChar("not"),pNotRange("_","AZaz09"),pRef(peg,"_")),pRange("!！","")));
+  pRule(peg,"\":\"",pSeq2(pRange(":：",""),pRef(peg,"_")));
+  pRule(peg,"\";\"",pOneMany(pSeq2(pRange(";；",""),pRef(peg,"_"))));
+  pRule(peg,"NLExpr",pSeq(pChar("(*"),pRef(peg,"_"),pNode(pOneMany(pSeq2(pNot(pSeq2(pManyRange(" \t​\v\r　",""),pChar("*)"))),pAny())),"NLExpr",0),pManyRange(" \t​\v\r　",""),pChar("*)"),pRef(peg,"_")));
+  pRule(peg,"\",\"",pSeq2(pRange(",，、",""),pRef(peg,"_")));
   pRule(peg,"\"[\"",pSeq2(pRange("[［",""),pRef(peg,"__")));
   pRule(peg,"\"]\"",pSeq2(pRange("]］",""),pRef(peg,"_")));
   pRule(peg,"\"{\"",pSeq2(pRange("{｛",""),pRef(peg,"__")));
-  pRule(peg,"StringExpr",pOre2(pSeq3(pChar("\""),pNode(pSeq2(pMany(pRef(peg,"STRING")),pChar("\"")),"String",-1),pRef(peg,"_")),pSeq3(pRange("\"”“＂",""),pNode(pSeq2(pMany(pRef(peg,"ZSTRING")),pRange("\"”“＂","")),"ZString",-1),pRef(peg,"_"))));
-  pRule(peg,"CharExpr",pOre2(pSeq3(pChar("\'"),pNode(pSeq2(pMany(pRef(peg,"CHAR")),pChar("\'")),"Char",-1),pRef(peg,"_")),pSeq3(pRange("\'’‘＇",""),pNode(pSeq2(pMany(pRef(peg,"ZCHAR")),pRange("\'’‘＇","")),"ZChar",-1),pRef(peg,"_"))));
+  pRule(peg,"StringExpr",pOre2(pSeq3(pChar("\""),pNode(pSeq2(pMany(pRef(peg,"STRING")),pChar("\"")),"QString",-1),pRef(peg,"_")),pSeq4(pRange("\"”“＂",""),pNode(pMany(pRef(peg,"ZSTRING")),"ZString",0),pRange("\"”“＂",""),pRef(peg,"_"))));
+  pRule(peg,"CharExpr",pOre2(pSeq3(pChar("\'"),pNode(pSeq2(pMany(pRef(peg,"CHAR")),pChar("\'")),"QString",-1),pRef(peg,"_")),pSeq4(pRange("\'’‘＇",""),pNode(pMany(pRef(peg,"ZCHAR")),"ZChar",0),pRange("\'’‘＇",""),pRef(peg,"_"))));
   pRule(peg,"\"}\"",pSeq2(pRange("}｝",""),pRef(peg,"_")));
   pRule(peg,"LongString",pOre2(pSeq4(pChar("\'\'\'"),pNode(pSeq2(pMany(pOre3(pRef(peg,"ESCAPE"),pSeq2(pNotRange("\\\'",""),pAny()),pSeq2(pNotChar("\'\'\'"),pChar("\'")))),pChar("\'")),"MultiString",-1),pChar("\'\'"),pRef(peg,"_")),pSeq4(pChar("\"\"\""),pNode(pSeq2(pMany(pOre3(pRef(peg,"ESCAPE"),pSeq2(pNotRange("\\\"",""),pAny()),pSeq2(pNotChar("\"\"\""),pChar("\"")))),pChar("\"")),"MultiString",-1),pChar("\"\""),pRef(peg,"_"))));
   pRule(peg,"\".\"",pSeq2(pRange(".．。",""),pRef(peg,"_")));
@@ -1235,61 +1235,72 @@ export const TPEG = (peg?: any): { [key: string]: PFunc } => {
   pRule(peg,"FalseExpr",pSeq4(pRange("Ff",""),pChar("alse"),pNode(pEmpty(),"FalseExpr",-5),pRef(peg,"_")));
   pRule(peg,"NullExpr",pSeq2(pNode(pDict("None null"),"Null",0),pRef(peg,"_")));
   pRule(peg,"\"=\"",pSeq3(pRange("=＝",""),pNotRange("=＝",""),pRef(peg,"_")));
-  pRule(peg,"Pass",pSeq2(pChar("pass"),pNode(pRef(peg,"_"),"Pass",-4)));
-  pRule(peg,"Break",pSeq2(pChar("break"),pNode(pRef(peg,"_"),"Break",-5)));
-  pRule(peg,"Continue",pSeq2(pChar("continue"),pNode(pRef(peg,"_"),"Continue",-8)));
+  pRule(peg,"\"[<\"",pSeq2(pRange("<[［＜",""),pRef(peg,"_")));
+  pRule(peg,"\">]\"",pSeq2(pRange("]>］＞",""),pRef(peg,"_")));
+  pRule(peg,"\"->\"",pSeq3(pRange("=-",""),pChar(">"),pRef(peg,"_")));
+  pRule(peg,"BreakStatement",pSeq3(pChar("break"),pNotRange("_","AZaz09"),pNode(pRef(peg,"_"),"Break",-5)));
+  pRule(peg,"ContinueStatement",pSeq3(pChar("continue"),pNotRange("_","AZaz09"),pNode(pRef(peg,"_"),"Continue",-8)));
+  pRule(peg,"PassStatement",pSeq3(pChar("pass"),pNotRange("_","AZaz09"),pNode(pRef(peg,"_"),"Pass",-4)));
+  pRule(peg,"YieldStatement",pSeq3(pChar("yield"),pNotRange("_","AZaz09"),pNode(pRef(peg,"_"),"Yield",-5)));
+  pRule(peg,"VarType",pSeq3(pNode(pDict("const let var"),"",0),pNotRange("_","AZaz09"),pRef(peg,"_")));
   pRule(peg,"SelfAssignOp",pSeq2(pNode(pSeq2(pOre(pChar("<<"),pChar(">>"),pChar("**"),pChar("//"),pRange("+=*/%&|^＋＝＊／％＆｜＾×÷","")),pRange("=＝","")),"",0),pRef(peg,"_")));
-  pRule(peg,"Name",pOre2(pRef(peg,"Identifier"),pRef(peg,"IdentifierLFP")));
-  pRule(peg,"CloseP",pSeq2(pNot(pRef(peg,"\")\"")),pNode(pOre2(pAndRange(".:+-*/%<>=!(){}[],\n",""),pRef(peg,"EOF")),"RecoverP",0)));
-  pRule(peg,"CloseS",pSeq2(pNot(pRef(peg,"\"]\"")),pNode(pOre2(pAndRange(".:+-*/%<>=!(){}[],\n",""),pRef(peg,"EOF")),"RecoverS",0)));
-  pRule(peg,"CloseB",pSeq2(pNot(pRef(peg,"\"}\"")),pNode(pOre2(pAndRange(".:+-*/%<>=!(){}[],\n",""),pRef(peg,"EOF")),"RecoverB",0)));
+  pRule(peg,"Name",pOre3(pRef(peg,"Identifier"),pRef(peg,"Defined"),pRef(peg,"UIdentifier")));
   pRule(peg,"FRACTION",pOre2(pSeq4(pManyRange("_","09０９"),pRef(peg,"\".\""),pNotChar("_"),pOneManyRange("_","09０９")),pSeq4(pRange("_","09０９"),pManyRange("_","09０９"),pRef(peg,"\".\""),pNotChar("."))));
-  pRule(peg,"ImportDecl",pOre2(pSeq3(pChar("import"),pRange(" \t​\v\r　",""),pNode(pSeq2(pEdge("name",pRef(peg,"Name"),0),pOption(pSeq3(pChar("as"),pRange(" \t​\v\r　",""),pEdge("alias",pRef(peg,"Name"),0)))),"ImportDecl",-7)),pSeq3(pChar("from"),pRange(" \t​\v\r　",""),pNode(pSeq4(pEdge("name",pRef(peg,"Name"),0),pChar("import"),pRange(" \t​\v\r　",""),pEdge("names",pOre2(pNode(pSeq2(pRef(peg,"Name"),pMany(pSeq3(pChar(","),pRef(peg,"_"),pRef(peg,"Name")))),"",0),pSeq2(pChar("*"),pNode(pRef(peg,"_"),"",-1))),0)),"FromDecl",-5))));
-  pRule(peg,"FuncParam",pNode(pSeq2(pEdge("name",pRef(peg,"Name"),0),pOption(pSeq2(pRef(peg,"\":\""),pEdge("type",pRef(peg,"Name"),0)))),"Param",0));
-  pRule(peg,"LambdaParams",pNode(pSeq2(pOption(pRef(peg,"Name")),pMany(pSeq2(pRef(peg,"\",\""),pRef(peg,"Name")))),"Param",0));
+  pRule(peg,"ImportDecl",pSeq3(pChar("import"),pNotRange("_","AZaz09"),pNode(pSeq3(pRef(peg,"_"),pEdge("name",pRef(peg,"Name"),0),pOption(pSeq4(pChar("as"),pNotRange("_","AZaz09"),pRef(peg,"_"),pEdge("alias",pRef(peg,"Name"),0)))),"ImportDecl",-6)));
+  pRule(peg,"FromImportDecl",pSeq3(pChar("from"),pNotRange("_","AZaz09"),pNode(pSeq(pRef(peg,"_"),pEdge("name",pRef(peg,"Name"),0),pChar("import"),pNotRange("_","AZaz09"),pRef(peg,"_"),pEdge("names",pOre2(pNode(pSeq2(pRef(peg,"Name"),pMany(pSeq3(pChar(","),pRef(peg,"_"),pRef(peg,"Name")))),"",0),pSeq2(pChar("*"),pNode(pRef(peg,"_"),"",-1))),0)),"FromDecl",-4)));
   pRule(peg,"FLOAT",pSeq2(pNotChar("_"),pOre2(pSeq2(pRef(peg,"FRACTION"),pOption(pRef(peg,"EXPONENT"))),pSeq2(pOneManyRange("_","09０９"),pRef(peg,"EXPONENT")))));
-  pRule(peg,"FuncParams",pNode(pSeq4(pRef(peg,"\"(\""),pOption(pRef(peg,"FuncParam")),pMany(pSeq3(pRef(peg,"\",\""),pRef(peg,"__"),pRef(peg,"FuncParam"))),pOre2(pSeq2(pRef(peg,"__"),pRef(peg,"\")\"")),pRef(peg,"CloseP"))),"FuncParam",0));
   pRule(peg,"FloatExpr",pSeq2(pNode(pRef(peg,"FLOAT"),"Double",0),pRef(peg,"_")));
   pRule(peg,"Number",pOre2(pRef(peg,"FloatExpr"),pRef(peg,"IntExpr")));
   pRule(peg,"Block",pNode(pScope(pSeq3(pSymbol(pRef(peg,"INDENT"),0),pOre2(pSeq3(pRef(peg,"Statement"),pMany(pSeq2(pRef(peg,"\";\""),pRef(peg,"Statement"))),pOption(pRef(peg,"\";\""))),pSeq2(pRef(peg,"_"),pAnd(pRef(peg,"EOL")))),pMany(pSeq2(pMatch(0),pOre2(pSeq3(pRef(peg,"Statement"),pMany(pSeq2(pRef(peg,"\";\""),pRef(peg,"Statement"))),pOption(pRef(peg,"\";\""))),pSeq2(pRef(peg,"_"),pAnd(pRef(peg,"EOL")))))))),"Block",0));
-  pRule(peg,"BlockStmt",pNode(pRef(peg,"Statement"),"Block",0));
-  pRule(peg,"GroupExpr",pNode(pSeq4(pRef(peg,"\"(\""),pRef(peg,"Expression"),pMany(pSeq3(pRef(peg,"\",\""),pRef(peg,"__"),pRef(peg,"Expression"))),pOre2(pSeq2(pRef(peg,"__"),pRef(peg,"\")\"")),pRef(peg,"CloseP"))),"Tuple",0));
-  pRule(peg,"ListExpr",pNode(pSeq4(pRef(peg,"\"[\""),pOption(pSeq2(pRef(peg,"Expression"),pMany(pSeq3(pRef(peg,"\",\""),pRef(peg,"__"),pRef(peg,"Expression"))))),pOption(pRef(peg,"\",\"")),pOre2(pSeq2(pRef(peg,"__"),pRef(peg,"\"]\"")),pRef(peg,"CloseS"))),"List",0));
+  pRule(peg,"GroupExpr",pNode(pSeq(pRef(peg,"\"(\""),pRef(peg,"Expression"),pMany(pSeq3(pRef(peg,"\",\""),pRef(peg,"__"),pRef(peg,"Expression"))),pRef(peg,"__"),pRef(peg,"\")\"")),"Tuple",0));
+  pRule(peg,"ListExpr",pNode(pSeq(pRef(peg,"\"[\""),pOption(pSeq2(pRef(peg,"Expression"),pMany(pSeq3(pRef(peg,"\",\""),pRef(peg,"__"),pRef(peg,"Expression"))))),pOption(pRef(peg,"\",\"")),pRef(peg,"__"),pRef(peg,"\"]\"")),"List",0));
   pRule(peg,"KeyValue",pNode(pSeq3(pEdge("name",pOre3(pRef(peg,"Name"),pRef(peg,"StringExpr"),pRef(peg,"CharExpr")),0),pRef(peg,"\":\""),pEdge("value",pRef(peg,"Expression"),0)),"KeyValue",0));
-  pRule(peg,"DataExpr",pNode(pSeq(pRef(peg,"\"{\""),pRef(peg,"KeyValue"),pMany(pSeq3(pRef(peg,"\",\""),pRef(peg,"__"),pRef(peg,"KeyValue"))),pOption(pRef(peg,"\",\"")),pOre2(pSeq2(pRef(peg,"__"),pRef(peg,"\"}\"")),pRef(peg,"CloseB"))),"Data",0));
+  pRule(peg,"DataExpr",pNode(pSeq(pRef(peg,"\"{\""),pOption(pSeq2(pRef(peg,"KeyValue"),pMany(pSeq3(pRef(peg,"\",\""),pRef(peg,"__"),pRef(peg,"KeyValue"))))),pOption(pRef(peg,"\",\"")),pRef(peg,"__"),pRef(peg,"\"}\"")),"Data",0));
   pRule(peg,"FormatContent3",pOre2(pSeq3(pChar("{"),pRef(peg,"Expression"),pChar("}")),pNode(pMany(pSeq3(pNotChar("\'\'\'"),pNotChar("{"),pAny())),"StringPart",0)));
   pRule(peg,"FormatContent1",pOre2(pSeq3(pChar("{"),pRef(peg,"Expression"),pChar("}")),pNode(pMany(pSeq3(pNotChar("\'"),pNotChar("{"),pAny())),"StringPart",0)));
   pRule(peg,"FormatContent3D",pOre2(pSeq3(pChar("{"),pRef(peg,"Expression"),pChar("}")),pNode(pMany(pSeq3(pNotChar("\"\"\""),pNotChar("{"),pAny())),"StringPart",0)));
   pRule(peg,"FormatContent1D",pOre2(pSeq3(pChar("{"),pRef(peg,"Expression"),pChar("}")),pNode(pMany(pSeq3(pNotChar("\""),pNotChar("{"),pAny())),"StringPart",0)));
   pRule(peg,"Constant",pOre(pRef(peg,"FormatString"),pRef(peg,"LongString"),pRef(peg,"StringExpr"),pRef(peg,"CharExpr"),pRef(peg,"Number"),pRef(peg,"TrueExpr"),pRef(peg,"FalseExpr"),pRef(peg,"NullExpr")));
-  pRule(peg,"Argument",pNode(pSeq4(pEdge("name",pRef(peg,"Name"),0),pRef(peg,"\"=\""),pRef(peg,"_"),pEdge("value",pRef(peg,"Expression"),0)),"KeyValue",0));
-  pRule(peg,"KeywordArgument",pNode(pSeq3(pOption(pSeq2(pRef(peg,"\",\""),pRef(peg,"__"))),pRef(peg,"Argument"),pMany(pSeq3(pRef(peg,"\",\""),pRef(peg,"__"),pRef(peg,"Argument")))),"Data",0));
   pRule(peg,"PowExpr",pSeq2(pRef(peg,"UnaryExpr"),pMany(pSeq2(pChar("**"),pFold("left",pSeq3(pEdge("name",pNode(pEmpty(),"Name",-2),-2),pRef(peg,"_"),pEdge("right",pRef(peg,"UnaryExpr"),0)),"Infix",-2)))));
   pRule(peg,"ProdExpr",pSeq2(pRef(peg,"PowExpr"),pMany(pFold("left",pSeq3(pEdge("name",pNode(pRef(peg,"PROD"),"Name",0),0),pRef(peg,"_"),pEdge("right",pRef(peg,"PowExpr"),0)),"Infix",0))));
   pRule(peg,"SumExpr",pSeq2(pRef(peg,"ProdExpr"),pMany(pSeq2(pRange("+-|＋ー｜",""),pFold("left",pSeq3(pEdge("name",pNode(pEmpty(),"Name",-1),-1),pRef(peg,"_"),pEdge("right",pRef(peg,"ProdExpr"),0)),"Infix",-1)))));
   pRule(peg,"EqExpr",pSeq2(pRef(peg,"SumExpr"),pMany(pFold("left",pSeq3(pEdge("name",pNode(pRef(peg,"EQ"),"Name",0),0),pRef(peg,"_"),pEdge("right",pRef(peg,"SumExpr"),0)),"Infix",0))));
   pRule(peg,"AndExpr",pSeq2(pRef(peg,"NotExpr"),pMany(pFold("left",pSeq3(pRef(peg,"AND"),pRef(peg,"_"),pEdge("right",pRef(peg,"NotExpr"),0)),"And",0))));
   pRule(peg,"Operator",pSeq2(pRef(peg,"AndExpr"),pMany(pFold("left",pSeq3(pRef(peg,"OR"),pRef(peg,"_"),pEdge("right",pRef(peg,"AndExpr"),0)),"Or",0))));
-  pRule(peg,"ElifBlock",pNode(pOneMany(pRef(peg,"ElifStmt")),"",0));
-  pRule(peg,"Return",pSeq2(pChar("return"),pNode(pOption(pSeq3(pNotRange("_","AZaz09"),pRef(peg,"_"),pEdge("expr",pRef(peg,"Expression"),0))),"Return",-6)));
+  pRule(peg,"NamedArgument",pNode(pSeq3(pEdge("name",pRef(peg,"Name"),0),pRef(peg,"\"=\""),pEdge("value",pRef(peg,"Expression"),0)),"KeyValue",0));
+  pRule(peg,"NamedArguments",pNode(pSeq3(pOption(pSeq2(pRef(peg,"\",\""),pRef(peg,"__"))),pRef(peg,"NamedArgument"),pMany(pSeq3(pRef(peg,"\",\""),pRef(peg,"__"),pRef(peg,"NamedArgument")))),"Data",0));
+  pRule(peg,"Decorator",pSeq2(pChar("@"),pNode(pSeq3(pEdge("name",pRef(peg,"Name"),0),pOption(pSeq3(pRef(peg,"\"(\""),pEdge("params",pRef(peg,"Arguments"),0),pRef(peg,"\")\""))),pRef(peg,"__")),"Decorator",-1)));
+  pRule(peg,"_ParamType",pFold("",pSeq3(pRef(peg,"\"[<\""),pOption(pSeq2(pRef(peg,"Type"),pMany(pSeq2(pRef(peg,"\",\""),pRef(peg,"Type"))))),pRef(peg,"\">]\"")),"ParamType",0));
+  pRule(peg,"FuncParams",pNode(pSeq(pRef(peg,"\"(\""),pOption(pRef(peg,"FuncParam")),pMany(pSeq3(pRef(peg,"\",\""),pRef(peg,"__"),pRef(peg,"FuncParam"))),pRef(peg,"__"),pRef(peg,"\")\"")),"FuncParam",0));
+  pRule(peg,"ElifStatements",pNode(pOneMany(pRef(peg,"ElifStatement")),"",0));
+  pRule(peg,"Expressions",pNode(pSeq2(pRef(peg,"Expression"),pOneMany(pSeq2(pRef(peg,"\",\""),pRef(peg,"Expression")))),"Tuple",0));
+  pRule(peg,"ControlStatement",pOre(pRef(peg,"ReturnStatement"),pRef(peg,"BreakStatement"),pRef(peg,"ContinueStatement"),pRef(peg,"PassStatement"),pRef(peg,"YieldStatement")));
   pRule(peg,"LeftHand",pSeq2(pRef(peg,"Name"),pMany(pOre2(pFold("recv",pSeq2(pRef(peg,"\".\""),pEdge("name",pRef(peg,"Name"),0)),"GetExpr",0),pFold("recv",pSeq3(pRef(peg,"\"[\""),pEdge("index",pRef(peg,"Expression"),0),pRef(peg,"\"]\"")),"IndexExpr",0)))));
   pRule(peg,"Source",pSeq3(pOption(pRef(peg,"EOL")),pNode(pMany(pSeq4(pRef(peg,"Statement"),pMany(pSeq2(pRef(peg,"\";\""),pRef(peg,"Statement"))),pOption(pRef(peg,"\";\"")),pRef(peg,"EOL"))),"Source",0),pRef(peg,"EOF")));
-  pRule(peg,"ClassDecl",pSeq3(pChar("class"),pRange(" \t​\v\r　",""),pNode(pSeq(pRef(peg,"_"),pEdge("name",pRef(peg,"Name"),0),pOption(pSeq(pChar("("),pRef(peg,"_"),pEdge("extends",pRef(peg,"Name"),0),pChar(")"),pRef(peg,"_"))),pChar(":"),pRef(peg,"_"),pOre2(pRef(peg,"Block"),pRef(peg,"BlockStmt"))),"ClassDecl",-6)));
-  pRule(peg,"FuncDecl",pSeq3(pChar("def"),pRange(" \t​\v\r　",""),pNode(pSeq(pRef(peg,"_"),pEdge("name",pRef(peg,"Name"),0),pEdge("params",pRef(peg,"FuncParams"),0),pRef(peg,"\":\""),pEdge("body",pOre2(pRef(peg,"Block"),pRef(peg,"BlockStmt")),0)),"FuncDecl",-4)));
   pRule(peg,"FormatString",pSeq3(pRange("Ff",""),pOre2(pSeq2(pChar("\'"),pOre2(pSeq3(pChar("\'\'"),pNode(pMany(pRef(peg,"FormatContent3")),"Format",0),pChar("\'\'\'")),pSeq3(pEmpty(),pNode(pMany(pRef(peg,"FormatContent1")),"Format",0),pChar("\'")))),pSeq2(pChar("\""),pOre2(pSeq3(pChar("\"\""),pNode(pMany(pRef(peg,"FormatContent3D")),"Format",0),pChar("\"\"\"")),pSeq3(pEmpty(),pNode(pMany(pRef(peg,"FormatContent1D")),"Format",0),pChar("\""))))),pRef(peg,"_")));
-  pRule(peg,"Lambda",pSeq2(pChar("lambda"),pNode(pSeq3(pOption(pSeq3(pRange(" \t​\v\r　",""),pRef(peg,"_"),pEdge("params",pRef(peg,"LambdaParams"),0))),pRef(peg,"\":\""),pEdge("body",pOre2(pRef(peg,"Block"),pRef(peg,"Expression")),0)),"FuncExpr",-6)));
-  pRule(peg,"Primary",pOre(pRef(peg,"GroupExpr"),pRef(peg,"ListExpr"),pRef(peg,"DataExpr"),pRef(peg,"Lambda"),pRef(peg,"Constant"),pRef(peg,"Name")));
-  pRule(peg,"Arguments",pNode(pSeq3(pOption(pSeq2(pNot(pSeq3(pRef(peg,"NAME"),pRef(peg,"_"),pChar("="))),pRef(peg,"Expression"))),pMany(pSeq4(pRef(peg,"\",\""),pRef(peg,"__"),pNot(pSeq3(pRef(peg,"NAME"),pRef(peg,"_"),pChar("="))),pRef(peg,"Expression"))),pOption(pRef(peg,"KeywordArgument"))),"Arguments",0));
+  pRule(peg,"Primary",pOre(pRef(peg,"NLExpr"),pRef(peg,"GroupExpr"),pRef(peg,"ListExpr"),pRef(peg,"DataExpr"),pRef(peg,"Constant"),pRef(peg,"Name")));
+  pRule(peg,"ClassDecl",pSeq3(pChar("class"),pRange(" \t​\v\r　",""),pNode(pSeq(pRef(peg,"_"),pEdge("name",pRef(peg,"Name"),0),pOption(pSeq3(pRef(peg,"\"(\""),pEdge("extends",pRef(peg,"Name"),0),pRef(peg,"\")\""))),pRef(peg,"\":\""),pOre2(pRef(peg,"Block"),pRef(peg,"Statement"))),"ClassDecl",-6)));
   pRule(peg,"NotExpr",pOre2(pNode(pSeq3(pRef(peg,"NOT"),pRef(peg,"_"),pRef(peg,"NotExpr")),"Not",0),pRef(peg,"EqExpr")));
   pRule(peg,"Expression",pSeq2(pRef(peg,"Operator"),pOption(pSeq3(pChar("if"),pNotRange("_","AZaz09"),pFold("then",pSeq(pRef(peg,"_"),pEdge("cond",pRef(peg,"Expression"),0),pChar("else"),pNotRange("_","AZaz09"),pRef(peg,"_"),pEdge("else",pRef(peg,"Expression"),0)),"IfExpr",-2)))));
-  pRule(peg,"ElifStmt",pNode(pSeq(pOre2(pMatch(0),pRef(peg,"LF")),pChar("elif"),pNotRange("_","AZaz09"),pRef(peg,"_"),pEdge("cond",pRef(peg,"Expression"),0),pRef(peg,"\":\""),pEdge("then",pOre2(pRef(peg,"Block"),pRef(peg,"BlockStmt")),0)),"ElifStmt",0));
-  pRule(peg,"IfStmt",pSeq3(pChar("if"),pNotRange("_","AZaz09"),pNode(pSeq(pRef(peg,"_"),pEdge("cond",pRef(peg,"Expression"),0),pRef(peg,"\":\""),pEdge("then",pOre2(pRef(peg,"Block"),pRef(peg,"BlockStmt")),0),pOption(pEdge("elif",pRef(peg,"ElifBlock"),0)),pOption(pSeq(pOre2(pMatch(0),pRef(peg,"LF")),pChar("else"),pNotRange("_","AZaz09"),pRef(peg,"_"),pRef(peg,"\":\""),pEdge("else",pOre2(pRef(peg,"Block"),pRef(peg,"BlockStmt")),0)))),"IfStmt",-2)));
-  pRule(peg,"ForStmt",pSeq3(pChar("for"),pNotRange("_","AZaz09"),pNode(pSeq(pRef(peg,"_"),pEdge("each",pRef(peg,"Name"),0),pChar("in"),pNotRange("_","AZaz09"),pRef(peg,"_"),pEdge("list",pRef(peg,"Expression"),0),pRef(peg,"\":\""),pEdge("body",pOre2(pRef(peg,"Block"),pRef(peg,"BlockStmt")),0)),"ForStmt",-3)));
-  pRule(peg,"WhileStmt",pSeq3(pChar("while"),pNotRange("_","AZaz09"),pNode(pSeq4(pRef(peg,"_"),pEdge("cond",pRef(peg,"Expression"),0),pRef(peg,"\":\""),pEdge("body",pOre2(pRef(peg,"Block"),pRef(peg,"BlockStmt")),0)),"WhileStmt",-5)));
-  pRule(peg,"SelfAssign",pNode(pSeq3(pEdge("left",pRef(peg,"LeftHand"),0),pEdge("name",pRef(peg,"SelfAssignOp"),0),pEdge("right",pRef(peg,"Expression"),0)),"SelfAssign",0));
-  pRule(peg,"SuffixExpr",pSeq2(pRef(peg,"Primary"),pMany(pOre(pFold("recv",pSeq(pRef(peg,"\".\""),pEdge("name",pRef(peg,"Name"),0),pRef(peg,"\"(\""),pEdge("params",pRef(peg,"Arguments"),0),pOre2(pSeq2(pRef(peg,"__"),pRef(peg,"\")\"")),pEdge("err",pRef(peg,"CloseP"),0))),"MethodExpr",0),pFold("recv",pSeq2(pRef(peg,"\".\""),pEdge("name",pRef(peg,"Name"),0)),"GetExpr",0),pFold("name",pSeq3(pRef(peg,"\"(\""),pEdge("params",pRef(peg,"Arguments"),0),pOre2(pSeq2(pRef(peg,"__"),pRef(peg,"\")\"")),pEdge("err",pRef(peg,"CloseP"),0))),"ApplyExpr",0),pFold("recv",pSeq(pRef(peg,"\"[\""),pOption(pEdge("left",pRef(peg,"Expression"),0)),pRef(peg,"\":\""),pOption(pEdge("right",pRef(peg,"Expression"),0)),pOre2(pRef(peg,"\"]\""),pEdge("err",pRef(peg,"CloseS"),0))),"Slice",0),pFold("recv",pSeq3(pRef(peg,"\"[\""),pEdge("index",pRef(peg,"Expression"),0),pOre2(pRef(peg,"\"]\""),pEdge("err",pRef(peg,"CloseS"),0))),"IndexExpr",0)))));
-  pRule(peg,"VarDecl",pOre2(pNode(pSeq3(pEdge("left",pRef(peg,"LeftHand"),0),pRef(peg,"\"=\""),pEdge("right",pRef(peg,"Expression"),0)),"VarDecl",0),pRef(peg,"SelfAssign")));
-  pRule(peg,"Statement",pOre(pRef(peg,"ClassDecl"),pRef(peg,"ImportDecl"),pRef(peg,"FuncDecl"),pRef(peg,"IfStmt"),pRef(peg,"ForStmt"),pRef(peg,"WhileStmt"),pRef(peg,"Return"),pRef(peg,"Pass"),pRef(peg,"Break"),pRef(peg,"Continue"),pRef(peg,"VarDecl"),pRef(peg,"Expression")));
+  pRule(peg,"Arguments",pNode(pSeq3(pOption(pSeq2(pNot(pSeq3(pRef(peg,"NAME"),pRef(peg,"_"),pChar("="))),pRef(peg,"Expression"))),pMany(pSeq4(pRef(peg,"\",\""),pRef(peg,"__"),pNot(pSeq3(pRef(peg,"NAME"),pRef(peg,"_"),pChar("="))),pRef(peg,"Expression"))),pOption(pRef(peg,"NamedArguments"))),"Arguments",0));
+  pRule(peg,"PrimaryType",pOre2(pSeq2(pNode(pSeq3(pRef(peg,"\"(\""),pOption(pSeq2(pRef(peg,"Type"),pMany(pSeq2(pRef(peg,"\",\""),pRef(peg,"Type"))))),pRef(peg,"\")\"")),"TupleType",0),pMany(pRef(peg,"_ParamType"))),pSeq3(pNode(pRef(peg,"NAME"),"BaseType",0),pRef(peg,"_"),pMany(pRef(peg,"_ParamType")))));
+  pRule(peg,"FuncDecl",pNode(pSeq(pOption(pEdge("deco",pRef(peg,"Decorator"),0)),pOption(pSeq3(pChar("async"),pNotRange("_","AZaz09"),pEdge("async",pRef(peg,"_"),-5))),pChar("def"),pNotRange("_","AZaz09"),pRef(peg,"_"),pEdge("name",pRef(peg,"Name"),0),pEdge("params",pRef(peg,"FuncParams"),0),pRef(peg,"\":\""),pEdge("body",pOre2(pRef(peg,"Block"),pRef(peg,"Statement")),0)),"FuncDecl",0));
+  pRule(peg,"ElseStatement",pNode(pSeq(pOre2(pMatch(0),pRef(peg,"LF")),pChar("else"),pNotRange("_","AZaz09"),pRef(peg,"_"),pRef(peg,"\":\""),pOre2(pRef(peg,"Block"),pRef(peg,"Statement"))),"Else",0));
+  pRule(peg,"ReturnStatement",pSeq3(pChar("return"),pNotRange("_","AZaz09"),pNode(pSeq2(pRef(peg,"_"),pOption(pEdge("expr",pOre2(pRef(peg,"Expressions"),pRef(peg,"Expression")),0))),"Return",-6)));
+  pRule(peg,"MultiAssignment",pNode(pSeq3(pEdge("left",pNode(pSeq2(pRef(peg,"LeftHand"),pOneMany(pSeq2(pRef(peg,"\",\""),pRef(peg,"LeftHand")))),"",0),0),pRef(peg,"\"=\""),pEdge("right",pOre2(pRef(peg,"Expressions"),pRef(peg,"Expression")),0)),"MultiAssignment",0));
+  pRule(peg,"VarDecl",pNode(pSeq(pOption(pEdge("anno",pRef(peg,"Decorator"),0)),pOption(pEdge("type",pRef(peg,"VarType"),0)),pEdge("left",pRef(peg,"Name"),0),pRef(peg,"\"=\""),pEdge("right",pRef(peg,"Expression"),0)),"VarDecl",0));
+  pRule(peg,"Assignment",pNode(pSeq4(pEdge("left",pRef(peg,"LeftHand"),0),pOption(pRef(peg,"\":\"")),pRef(peg,"\"=\""),pEdge("right",pRef(peg,"Expression"),0)),"Assignment",0));
+  pRule(peg,"SelfAssignment",pNode(pSeq3(pEdge("left",pRef(peg,"LeftHand"),0),pEdge("name",pRef(peg,"SelfAssignOp"),0),pEdge("right",pRef(peg,"Expression"),0)),"SelfAssignment",0));
+  pRule(peg,"SuffixExpr",pSeq2(pRef(peg,"Primary"),pMany(pOre(pFold("recv",pSeq(pRef(peg,"\".\""),pEdge("name",pRef(peg,"Name"),0),pRef(peg,"\"(\""),pEdge("params",pRef(peg,"Arguments"),0),pRef(peg,"__"),pRef(peg,"\")\"")),"MethodExpr",0),pFold("recv",pSeq2(pRef(peg,"\".\""),pEdge("name",pRef(peg,"Name"),0)),"GetExpr",0),pFold("name",pSeq4(pRef(peg,"\"(\""),pEdge("params",pRef(peg,"Arguments"),0),pRef(peg,"__"),pRef(peg,"\")\"")),"ApplyExpr",0),pFold("recv",pSeq(pRef(peg,"\"[\""),pOption(pEdge("left",pRef(peg,"Expression"),0)),pRef(peg,"\":\""),pOption(pEdge("right",pRef(peg,"Expression"),0)),pRef(peg,"\"]\"")),"Slice",0),pFold("recv",pSeq3(pRef(peg,"\"[\""),pEdge("index",pRef(peg,"Expression"),0),pRef(peg,"\"]\"")),"IndexExpr",0)))));
+  pRule(peg,"AssignmentStatement",pOre4(pRef(peg,"MultiAssignment"),pRef(peg,"VarDecl"),pRef(peg,"Assignment"),pRef(peg,"SelfAssignment")));
   pRule(peg,"UnaryExpr",pOre2(pSeq2(pRange("+-~＋ー〜",""),pNode(pSeq3(pEdge("name",pNode(pEmpty(),"Name",-1),-1),pRef(peg,"_"),pEdge("expr",pRef(peg,"UnaryExpr"),0)),"Unary",-1)),pRef(peg,"SuffixExpr")));
+  pRule(peg,"FuncType",pSeq2(pRef(peg,"PrimaryType"),pMany(pFold("",pSeq2(pRef(peg,"\"->\""),pRef(peg,"Type")),"FuncType",0))));
+  pRule(peg,"FuncParam",pNode(pSeq3(pEdge("name",pRef(peg,"Name"),0),pOption(pSeq2(pRef(peg,"\":\""),pEdge("type",pRef(peg,"Type"),0))),pOption(pSeq2(pRef(peg,"\"=\""),pEdge("value",pRef(peg,"Expression"),0)))),"Param",0));
+  pRule(peg,"ElifStatement",pNode(pSeq(pOre2(pMatch(0),pRef(peg,"LF")),pChar("elif"),pNotRange("_","AZaz09"),pRef(peg,"_"),pEdge("cond",pRef(peg,"Expression"),0),pRef(peg,"\":\""),pEdge("then",pOre2(pRef(peg,"Block"),pRef(peg,"Statement")),0)),"Elif",0));
+  pRule(peg,"IfStatement",pSeq3(pChar("if"),pNotRange("_","AZaz09"),pNode(pSeq(pRef(peg,"_"),pEdge("cond",pRef(peg,"Expression"),0),pRef(peg,"\":\""),pEdge("then",pOre2(pRef(peg,"Block"),pRef(peg,"Statement")),0),pOption(pEdge("elif",pRef(peg,"ElifStatements"),0)),pOption(pEdge("else",pRef(peg,"ElseStatement"),0))),"If",-2)));
+  pRule(peg,"ForStatement",pSeq3(pChar("for"),pNotRange("_","AZaz09"),pNode(pSeq(pRef(peg,"_"),pEdge("each",pRef(peg,"Name"),0),pChar("in"),pNotRange("_","AZaz09"),pRef(peg,"_"),pEdge("list",pRef(peg,"Expression"),0),pRef(peg,"\":\""),pEdge("body",pOre2(pRef(peg,"Block"),pRef(peg,"Statement")),0),pOption(pEdge("else",pRef(peg,"ElseStatement"),0))),"For",-3)));
+  pRule(peg,"WhileStatement",pSeq3(pChar("while"),pNotRange("_","AZaz09"),pNode(pSeq(pRef(peg,"_"),pEdge("cond",pRef(peg,"Expression"),0),pRef(peg,"\":\""),pEdge("body",pOre2(pRef(peg,"Block"),pRef(peg,"Statement")),0),pOption(pEdge("else",pRef(peg,"ElseStatement"),0))),"While",-5)));
+  pRule(peg,"Statement",pOre(pRef(peg,"ClassDecl"),pRef(peg,"ImportDecl"),pRef(peg,"FromImportDecl"),pRef(peg,"FuncDecl"),pRef(peg,"IfStatement"),pRef(peg,"ForStatement"),pRef(peg,"WhileStatement"),pRef(peg,"ControlStatement"),pRef(peg,"AssignmentStatement"),pRef(peg,"Expression")));
+  pRule(peg,"Type",pSeq2(pRef(peg,"FuncType"),pOption(pFold("",pOneMany(pSeq3(pChar("|"),pRef(peg,"_"),pRef(peg,"Type"))),"UnionType",0))));
   return peg;
 }
