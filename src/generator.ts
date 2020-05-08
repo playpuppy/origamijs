@@ -1,7 +1,7 @@
 import { ParseTree } from './parser';
 import { Type, TypeEnv, Symbol } from './types';
-import { Code, Language } from './modules';
-import { stringfy } from './origami-utils';
+import { Code, Language, rewriteCode } from './modules';
+import { stringfy, isInfix } from './origami-utils';
 
 const AnyType = Type.of('any')
 
@@ -22,6 +22,12 @@ export abstract class Generator {
   public setLanguage(lang: Language) {
     this.lang = lang
     this.code.modules = lang.initModules()
+    for(const module of this.code.modules) {
+      for(const s of module.symbols) {
+        const [key, type, code, options] = s
+        this.define(key, type, rewriteCode(module.entryKey, code), options)
+      }
+    }
   }
 
   protected loadModule(name: string) {
@@ -36,7 +42,7 @@ export abstract class Generator {
 
   protected abstract visit(pt: ParseTree): Type
   public abstract generate(pt: ParseTree): Code
-
+  public abstract define(key: string, type: string, code: string, option?: any): Symbol;
 }
 
 abstract class CodeWriter extends Generator {

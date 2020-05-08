@@ -1,7 +1,7 @@
 {
-  "name": "origamijs",
+  "name": "@playpuppy/origamijs",
   "version": "0.1.0",
-  "description": "Origami Trans-Compiler",
+  "description": "Origami TransCompiler",
   "main": "./build/index.js",
   "types": "./build/index.d.ts",
   "scripts": {
@@ -16,7 +16,7 @@
     "peg"
   ],
   "author": "Kimio Kuramitsu",
-  "license": "ISC",
+  "license": "MIT License",
   "devDependencies": {
     "@types/jest": "^24.0.19",
     "@types/node": "^12.7.12",

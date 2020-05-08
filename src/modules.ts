@@ -7,9 +7,9 @@ export const safeSymbol = (symbol: string) => `$__${symbol}`
 
 export type SymbolList = ([string, string, string] | [string, string, string, any])[]
 
-const rewiteCode = (key: string, code: string) => {
+export const rewriteCode = (key: string, code: string) => {
   if (code.startsWith('$$')) {
-    return `${EntryPoint}[${key}].` + code.substring(2)
+    return `${EntryPoint}.${key}.` + code.substring(2)
   }
   return code
 }
@@ -22,7 +22,7 @@ export const symbolMap = (module: Module, names?: { [key: string]: string }) => 
       continue
     }
     const type = Type.parseOf(symbol[1])
-    const code = rewiteCode(module.entryKey, symbol[2])
+    const code = rewriteCode(module.entryKey, symbol[2])
     const key = type.isFuncType() ? `${name}@${type.paramTypes().length}` : name
     if (symbol.length === 3) {
       ss[key] = (new Symbol(type, code))
@@ -117,11 +117,22 @@ export type SourceEvent = {
 export type Executable = (vars: any) => IterableIterator<any>
 
 export const generate = (source: string) => {
-  return new Function(`
-function* (${EntryPoint}) {
+  const main = `
+return function* (${EntryPoint}) {
   ${source}
-}  
-  `) as Executable
+}
+`
+  try {
+    return (new Function(main))() as Executable
+  }
+  catch (e) {
+    console.log(main);
+    console.log(e);
+    return function*($v:any) {
+      console.log(main);
+      console.log(e);
+    }
+  }
 } 
 
 export class Code {
@@ -132,13 +143,6 @@ export class Code {
   public compiled: string = ''
   public main: Executable | undefined = undefined
 
-  public getExecutable() {
-    if (!this.main) {
-      this.main = generate(this.compiled)
-    }
-    return this.main
-  }
-
   public newRuntimeContext(context: any) {
     for (var module of this.modules) {
       module = exportModule(module, context)
@@ -148,6 +152,14 @@ export class Code {
     context[safeSymbol('sync')] = sync
     return context
   }
+
+  public getExecutable() {
+    if (!this.main) {
+      this.main = generate(this.compiled)
+    }
+    return this.main
+  }
+
 
 }
 

@@ -91,7 +91,7 @@ test(`{key: "a", value: 1}`, () => {
 test(`true: bool`, () => {
   const env = new Origami();
   const [code, ty] = env.typeCheck(p('True'), BoolTy);
-  expect(code).toStrictEqual('true');
+  expect(code.join('')).toStrictEqual('true');
   expect(ty).toStrictEqual(BoolTy);
 });
 

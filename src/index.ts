@@ -42,25 +42,3 @@ export class Origami {
 
 }
 
-class LibPuppy extends Module {
-
-  constructor() {
-    super([])
-  }
-
-  __init__(context: any) {
-    context['$__world__'] = null
-  }
-
-  print(v: any[], options?: any) {
-    console.log(v.map((x) => `${x}`).join(' '))
-  }
-
-}
-
-const test = () => {
-  const puppy = new Language(
-    ['', new LibPuppy()]
-  )
-  const compiler = new Origami(puppy)
-}
