@@ -105,8 +105,7 @@ const exportModule = (module: Module, context: any) => {
 }
 
 const sync = (runtime: IterableIterator<any>) => {
-  const stopify = new Stopify()
-  return stopify.syncExec(runtime)
+  return new Stopify(runtime).syncExec()
 }
 
 export type SourceEvent = {

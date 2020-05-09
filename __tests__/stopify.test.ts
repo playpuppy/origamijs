@@ -1,4 +1,4 @@
-import {Stopify} from '../src/stopify'
+import { Stopify } from '../src/stopify'
 
 const prog1 = function*(vars: any){
   vars['c'] = 0
@@ -10,9 +10,9 @@ const prog1 = function*(vars: any){
 };
 
 test(`prog1`, () => {
-  const runtime = new Stopify()
-  const vars = {'c': 0}
-  runtime.start(prog1(vars), (ret) => {
+  const vars = { 'c': 0 }
+  const runtime = new Stopify(prog1(vars))
+  runtime.start((ret) => {
     console.log(`c=2 ${vars['c']} ret=${ret}`)
     expect(vars['c']).toStrictEqual(2)
   })
@@ -32,9 +32,9 @@ const prog2 = function* (vars: any) {
 };
 
 test(`prog2`, () => {
-  const runtime = new Stopify()
-  const $v = { 'c': 0}
-  const ret = runtime.syncExec(prog2($v));
+  const $v = { 'c': 0 }
+  const runtime = new Stopify(prog2($v))
+  const ret = runtime.syncExec()
   console.log(`fib(6) = ${$v['c']}`)
   expect($v['c']).toStrictEqual(8)
   expect(ret).toStrictEqual(1);

@@ -9,7 +9,7 @@ const HelloWorld = function*(vars: any) {
 
 export class Stopify {
 
-  private runtimeStack: IterableIterator<any>[] = []
+  private runtimeStack: IterableIterator<any>[];
   private cps: any = null
   private retval: any = undefined
   private paused = false
@@ -19,10 +19,14 @@ export class Stopify {
   private trackingLine = (line: number) => { }
   private endingEvent = (ret: any) => {  }
 
-  public syncExec(runtime: IterableIterator<any>) {
+  public constructor(runtime: IterableIterator<any>) {
     this.runtimeStack = [runtime];
+  }
+
+  public syncExec() {
+    //this.runtimeStack = [runtime];
     while (this.runtimeStack.length > 0) {
-      runtime = this.runtimeStack[this.runtimeStack.length - 1];
+      const runtime = this.runtimeStack[this.runtimeStack.length - 1];
       const res = runtime.next(this.retval);
       if (res.done) {
         this.retval = res.value;
@@ -56,12 +60,13 @@ export class Stopify {
     this.trackingLine = lineTracer
   }
 
-  public start(runtime: IterableIterator<any>, ending = (ret: any) => { } ) {
+  // runtime: IterableIterator<any>, 
+  public start(ending = (ret: any) => { } ) {
     if(!this.cps) {
       clearTimeout(this.cps);
       this.cps = undefined;
     }
-    this.runtimeStack = [runtime];
+    //this.runtimeStack = [runtime];
     this.paused = false;
     this.endingEvent = ending;
     if(this.timeOut > 1000) {
@@ -71,6 +76,10 @@ export class Stopify {
   }
 
   stepExec() {
+    if (this.runtimeStack.length === 0) {
+      this.endingEvent(this.retval)
+      return
+    }
     if (this.paused === true) {
       this.cps = setTimeout(() => { this.stepExec() }, 100);
       return;
@@ -88,7 +97,7 @@ export class Stopify {
       //console.log(`returing ${this.retval}`);
       if (this.runtimeStack.length === 0) {
         this.endingEvent(res.value)
-        return;
+        return
       }
     }
     else {
@@ -127,9 +136,9 @@ export class Stopify {
 
   public stop() {
     if (!this.cps) {
-      this.runtimeStack = [];
-      clearTimeout(this.cps);
-      this.cps = null;
+      this.runtimeStack = []
+      clearTimeout(this.cps)
+      this.cps = null
     }
   }
 

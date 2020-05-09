@@ -4,8 +4,9 @@ import { Stopify } from "./stopify"
 import { Language, Module, Code } from "./modules"
 import { Generator, Environment as Compiler } from "./generator"
 import { OrigamiJS } from "./jscompiler"
+import { LibPython } from "./libpython"
 
-export { Language, Module, Parser, Compiler, Code, ParseTree}
+export { Language, Module, Parser, Compiler, Code, ParseTree, Stopify, LibPython}
 
 export class Origami {
   lang: Language
