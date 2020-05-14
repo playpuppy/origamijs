@@ -3,6 +3,7 @@ import { Type, TypeEnv, Symbol } from './types';
 import { Module, symbolMap, EntryPoint} from './modules';
 import { Environment, FunctionContext } from './generator'
 import { quote, normalToken, stringfy, isInfix } from './origami-utils';
+import { DH_CHECK_P_NOT_SAFE_PRIME } from 'constants';
 
 const VoidType = Type.of('void')
 const BoolType = Type.of('bool')
@@ -50,47 +51,34 @@ export class OrigamiJS extends Environment {
   }
 
   acceptVar(pt: ParseTree) {
-    const name = pt.getToken();
-    const symbol = this.getSymbol(name);
-    if (symbol !== undefined) {
-      this.push(symbol.format());
-      return symbol.type;
-    }
-    this.perror(pt, 'UndefinedName')
-    this.push(name)
-    return this.untyped()
+    const symbol = this.checkSymbolName(pt)
+    this.push(symbol.format());
+    return symbol.type;
   }
 
   acceptVarDecl(pt: ParseTree) {
-    const name = pt.getToken('left')
-    var symbol = this.getSymbol(name)
-    if (symbol !== undefined) {
-      this.push(symbol.format())
-      this.pushS(' = ')
-      this.pushT(pt.get('right'), symbol.type);
-    }
-    else {
-      const safename = this.safeName(name);
-      const [code, ty] = this.typeCheck(pt.get('right'), this.newVarType(pt.get('left')));
-      const symbol1 = this.setSymbol(name, new Symbol(ty, safename));
-      this.pushVarDecl(symbol1)
-      this.push(symbol1.format())
-      this.pushS(' = ')
-      this.push(code)
+    const [right, rightType] = this.typeCheck(pt.get('right'), this.newVarType(pt.get('left')));
+    const symbol = this.checkSymbolName(pt.get('left'), rightType)
+    this.push(symbol.format())
+    this.pushS(' = ')
+    this.push(right)
       // if (this.autoPuppyMode && symbol1.isGlobal()) {
       //   out.push(`;puppy.v('${name}')`);
       // }
-    }
     return VoidType
   }
   
   safeName(name: string) {    
     if(this.inGlobal() && !this.inLocal()) {
-      const global = this.getSymbol('$')
-      //console.log(`global ${global}`)
-      if (global) {
-        return global.format([name]);
-      }
+      return this.safeGlobalName(name)
+    }
+    return this.safeLocalName(name)
+  }
+
+  safeGlobalName(name: string) {
+    const global = this.getSymbol('$')
+    if (global) {
+      return global.format([name]);
     }
     return this.safeLocalName(name)
   }
@@ -99,14 +87,33 @@ export class OrigamiJS extends Environment {
     return name.replace('*', '')
   }
 
-  pushVarDecl(symbol: Symbol) {
-    if(!symbol.code.startsWith('$')) {
-      // if (this.hasSymbol('var')) {
-      this.pushS('var');
-      this.pushSP();
-      // }
+  checkSymbolName(pt: ParseTree, ty?: Type) {
+    const name = pt.getToken();
+    const symbol = this.getSymbol(name);
+    if (symbol === undefined) {
+      const safename = this.safeGlobalName(name);
+      if(!ty) {
+        ty = this.newVarType(pt)
+      }
+      const symbol1 = this.getRoot().setSymbol(name,
+        new Symbol(ty, safename, { error: 'UndefinedName', 'source': pt }))
+      this.getRoot().funcBase.declName(safename);
+      return symbol1
     }
+    return symbol
   }
+
+  acceptMultiAssignment(pt: ParseTree) {
+    const [cs, ty] = this.typeCheck(pt.get('right'))
+    const symbols = []
+    for(const name of pt.get('left').subNodes()) {
+      symbols.push(this.checkSymbolName(name))
+    }
+    this.pushP('[', symbols.map(s=>s.code), ']')
+    this.push(' = ')
+    this.push(cs)
+  }
+
 
   acceptTuple(pt: ParseTree) {
     const types: Type[] = []
@@ -277,8 +284,8 @@ export class OrigamiJS extends Environment {
     const symbol = this.getSymbol(key);
     //console.log(`${pt} ${name} ${key} ${symbol}`)
     if (symbol) {
-      params.unshift(recv);  // recvを先頭に追加する
-      return this.emitSymbolExpr(pt, symbol, params, options);
+      //params.unshift(recv);  // recvを先頭に追加する
+      return this.emitSymbolExpr(pt, symbol, [recv].concat(params), options);
     }
     this.visit(recv)
     this.push('.')
@@ -678,14 +685,14 @@ export class OrigamiJS extends Environment {
     const funcBase = lenv.funcBase = new FunctionContext(name, ptypes, lenv.newVarType(pt.get('name')))
     var defun = lenv.setSymbol(name, new Symbol(funcBase.type, this.safeName(name), Async))
     //lenv.decIndent()
-    const body = lenv.stringfy(pt.get('body'))
+    const body = lenv.stringfy(this.makeBlock(pt.get('body'), pt))
     // check 
     if (!funcBase.hasReturn) {
       defun.type = Type.newFuncType(funcBase.type, VoidType)
     }
     this.setSymbol(name, defun)
+    this.funcBase.declName(defun.code)
     if (funcBase.foundAsync) {
-      this.pushVarDecl(defun);
       this.push(defun.format())
       this.pushS(' = ')
       this.push('function*');
@@ -694,7 +701,6 @@ export class OrigamiJS extends Environment {
       this.push(body)
     }
     else {
-      this.pushVarDecl(defun);
       this.push(defun.format())
       this.pushS(' = ')
       this.pushP('(', names, ')')
@@ -806,6 +812,9 @@ export class OrigamiJS extends Environment {
 
   // Source
   acceptSource(pt: ParseTree) {
+    if (pt.is('Source') || (pt.has('parent') && pt.get('parent').is('FuncDecl'))) {
+      this.pushIndent('//@names')
+    }
     if (pt.has('parent')) {
       this.pushYield(pt.get('parent'))
     }
@@ -816,7 +825,7 @@ export class OrigamiJS extends Environment {
     }
     return VoidType
   }
-
+  
   public compile(source: string, parser = PuppyParser) {
     const pt = parser(source)
     this.visit(pt)

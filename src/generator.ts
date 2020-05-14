@@ -111,32 +111,32 @@ abstract class CodeWriter extends Generator {
     this.pushS(close)
   }
 
-  protected pushIndent() {
+  protected pushIndent(msg='') {
     this.pushLF()
     if (this.indentLevel > 0) {
       const tab = this.token('\t')
       this.push(tab.repeat(this.indentLevel))
+    }
+    if(msg !== '') {
+      this.push(msg)
     }
   }
   protected decIndent() {
     this.indentLevel = -1
   }
 
-  public stringfy(pt: ParseTree): string {
-    const buffers = this.buffers
-    this.buffers = []
-    this.visit(pt)
-    const cs = this.buffers
-    this.buffers = buffers
-    return stringfy(cs)
-  }
-
   public generate(pt: ParseTree): Code {
     this.buffers = []
     this.visit(pt)
-    this.code.compiled = stringfy(this.buffers)
-    return this.code;
+    this.code.compiled = this.rewrite(stringfy(this.buffers))
+    return this.code
   }
+
+  protected rewrite(source: string) {
+    return source
+  }
+
+
 }
 
 const DefaultMethodMap: { [key: string]: string } = {
@@ -151,6 +151,7 @@ const DefaultMethodMap: { [key: string]: string } = {
 export class FunctionContext {
   isGlobalMain: boolean
   name: string
+  names: string[] = []
   hasReturn = false
   foundAsync = false
   returnType: Type
@@ -161,6 +162,13 @@ export class FunctionContext {
     this.returnType = returnType;
     this.type = Type.newFuncType(Type.newTupleType(...paramTypes), returnType);
     this.isGlobalMain = isGlobalMain
+  }
+
+  declName(name: string) {
+    if(!name.startsWith('$') && !(name in this.names)) {
+      this.names.push(name)
+    }
+    //console.log(`declName ${name}, ${this.names}`)
   }
 }
 
@@ -185,6 +193,10 @@ export class Environment extends CodeWriter {
       this.typeEnv = new TypeEnv()
       this.varTypeId = 0
     }
+  }
+
+  protected getRoot() :Environment {
+    return this.parent === undefined ? this : this.parent.getRoot()
   }
 
   protected getAcceptMethod(pt: ParseTree): string {
@@ -237,11 +249,16 @@ export class Environment extends CodeWriter {
     if (typeof type === 'string') {
       type = Type.parseOf(type)
     }
+    const symbol = new Symbol(type, code, options)
     if (type.isFuncType()) {
+      // var a = code!.indexOf('{');
+      // console.log(`type ${key} ${type} ${a}`)
+      if (code && code.indexOf('{') === -1) {
+        this.setSymbol(key, symbol)
+      }
       key = `${key}@${type.paramTypes().length}`
     }
-    //console.log(`define ${key} ${type}`)
-    return this.setSymbol(key, new Symbol(type, code, options))
+    return this.setSymbol(key, symbol)
   }
 
   public testModule(modules: any[]) {
@@ -344,6 +361,24 @@ export class Environment extends CodeWriter {
     }
     return false
   }
+
+  public rewrite(source: string) {
+    if (this.funcBase.names.length > 0) {
+      const decls = this.token('var') + ' ' + this.funcBase.names.join(', ')
+      return source.replace('//@names', decls)
+    }
+    return source
+  }
+
+  public stringfy(pt: ParseTree): string {
+    const buffers = this.buffers
+    this.buffers = []
+    this.visit(pt)
+    const cs = this.buffers
+    this.buffers = buffers
+    return this.rewrite(stringfy(cs))
+  }
+
 
 }
 

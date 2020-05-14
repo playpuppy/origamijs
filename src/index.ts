@@ -3,7 +3,7 @@ import { PuppyParser } from "./parser"
 import { Stopify } from "./stopify"
 import { Language, Module, Code } from "./modules"
 import { Generator, Environment as Compiler } from "./generator"
-import { OrigamiJS } from "./jscompiler"
+import { OrigamiJS } from "./compiler"
 import { LibPython } from "./libpython"
 
 export { Language, Module, Parser, Compiler, Code, ParseTree, Stopify, LibPython}

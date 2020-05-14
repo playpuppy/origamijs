@@ -1,5 +1,5 @@
 import { Type } from '../src/types';
-import { OrigamiJS } from './jscompiler';
+import { OrigamiJS } from './compiler';
 import { PuppyParser, ParseTree } from '../src/parser';
 
 export const p = (s: string) => PuppyParser(s).subNodes()[0]

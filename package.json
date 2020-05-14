@@ -15,8 +15,11 @@
     "konoha",
     "peg"
   ],
+  "bin": {
+    "puppynode": "build/main.js"
+  },
   "author": "Kimio Kuramitsu",
-  "license": "MIT License",
+  "license": "MIT",
   "devDependencies": {
     "@types/jest": "^24.0.19",
     "@types/node": "^12.7.12",

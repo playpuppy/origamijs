@@ -2,11 +2,16 @@ import { Module, SymbolList } from './modules';
 
 const DefineLibPython: SymbolList = [
   ['abs', 'float->float', '$$abs'],
+  ['int', 'any->int', '$$int'],
+  ['str', 'any->string', '$$str'],
+  ['.split', 'string->string[]', '$$split({0})'],
+  ['.split', '(string,string)->string[]', '$$split({0},{1})'],
+  ['map', '(a->b,a[])->b[]', '$$map'],
 ]
 
 export class LibPython extends Module {
-  public constructor() {
-    super(DefineLibPython)
+  public constructor(extra: SymbolList = []) {
+    super(DefineLibPython.concat(extra))
   }
 
   /* built-in functions  */
