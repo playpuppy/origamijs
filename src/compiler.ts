@@ -114,7 +114,6 @@ export class OrigamiJS extends Environment {
     this.push(cs)
   }
 
-
   acceptTuple(pt: ParseTree) {
     const types: Type[] = []
     const cs: string[][] = []
@@ -564,6 +563,9 @@ export class OrigamiJS extends Environment {
   /* statements */
 
   makeBlock(pt: ParseTree, parent?: ParseTree) {
+    if (pt.is('Else')) {
+      pt = pt.get(0)
+    }
     if(!pt.is('Block')) {
       const block = new ParseTree('Block');
       block.append(pt)

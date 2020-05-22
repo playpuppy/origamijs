@@ -1,13 +1,64 @@
 import { Module, SymbolList } from './modules';
+import { SSL_OP_ALL } from 'constants';
 
 const DefineLibPython: SymbolList = [
-  ['abs', 'float->float', '$$abs'],
+  ['bool', 'any->bool', '$$bool'],
   ['int', 'any->int', '$$int'],
+  ['chr', 'int->string', '$$chr'],
+  ['float', 'any->float', '$$float'],
   ['str', 'any->string', '$$str'],
+  ['repr', 'any->string', '$$repr'],
+  ['list', 'any->any[]', '$$list'],
+  ['tuple', 'any->any[]', '$$tuple'],
+  ['abs', 'float->float', '$$abs'],
+  ['round', 'float->float', '$$round'],
+  ['len', 'any->int', '$$len'],
+  ['range', '(int)->int[]', '$$range(1,{0},1)'],
+  ['range', '(int,int)->int[]', '$$range({0},{1},1)'],
+  ['range', '(int,int,int)->int[]', '$$range'],
+
+  // list,iterable
+  ['filter', '(a->bool,a[])->a[]', '$$filter'],
+  ['map', '(a->b,a[])->b[]', '$$map'],
+  ['all', 'bool[]->bool', '$$all'],
+  ['any', 'bool[]->bool', '$$any'],
+  ['.append', '(a[],a)->void', '({0}).push({1})'],
+  ['.clear', '(a[])->void', '({0}).length=0'],
+
+  // object
+  ['isinstance', '(any,any)->any', '$$isinstance'],
+  ['getattr', '(any,string)->any', '$$getattr'],
+  ['hasattr', '(any,string)->bool', '$$hasattr'],
+  ['aetattr', '(any,string,any)->void', '$$setattr'],
+  ['delattr', '(any,string)->void', '$$delattr'],
+
+  // string
+
   ['.split', 'string->string[]', '$$split({0})'],
   ['.split', '(string,string)->string[]', '$$split({0},{1})'],
-  ['map', '(a->b,a[])->b[]', '$$map'],
+  ['.upper', 'string->string', '({0}).toUpperCase()'],
+  ['.lower', 'string->string', '({0}).toLowerCase()'],
+  ['.startswith', '(string,string)->string', '({0}).startsWith({1})'],
+  ['.startswith', '(string,string,int)->string', '({0}).startsWith({1},{2})'],
+  ['.endswith', '(string,string)->string', '({0}).endsWith({1})'],
+  ['.endswith', '(string,string,int)->string', '({0}).endsWith({1},{2})'],
 ]
+
+const rangeInc = function*(start: number, end: number, step: number) {
+  var i = start;
+  while (i < end) {
+    yield i
+    i += step
+  }
+}
+
+const rangeDec = function* (start: number, end: number, step: number) {
+  var i = start;
+  while (i > end) {
+    yield i
+    i += step
+  }
+}
 
 export class LibPython extends Module {
   public constructor(extra: SymbolList = []) {
@@ -80,11 +131,28 @@ export class LibPython extends Module {
     return 0.0;
   }
 
+  public max(iterable: number[]) {
+    return Math.max(...iterable);
+  }
+
+  public max2(x: number, y: number) {
+    return Math.max(x, y);
+  }
+
+  public min(iterable: number[]) {
+    return Math.min(...iterable);
+  }
+
+  public min2(x: number, y: number) {
+    return Math.min(x, y);
+  }
+
+
   public getattr(x: any, key: string, defval: any): any {
     return x[key] !== undefined ? x[key] : defval;
   }
 
-  public hasattr(x: any, key: string): any {
+  public hasattr(x: any, key: string): boolean {
     return x[key] !== undefined;
   }
 
@@ -100,6 +168,10 @@ export class LibPython extends Module {
       return Number.isNaN(v) ? 0 : v;
     }
     return x | 0;
+  }
+
+  public round(n: number) {
+    return Math.round(n);
   }
 
   public len(x: any) {
@@ -120,39 +192,44 @@ export class LibPython extends Module {
     return es;
   }
 
-  public max1(iterable: number[]) {
-    return Math.max(...iterable);
-  }
 
-  public max(x: number, y: number, ...iterable: number[]) {
-    const m = Math.max(x, y);
-    if (iterable.length > 0) {
-      return Math.max(m, Math.max(...iterable));
+  public range(start: number, end?: number, step = 1) {
+    if(!end) {
+      end = start
+      start = 0
     }
-    return m;
-  }
-
-  public min1(iterable: number[]) {
-    return Math.min(...iterable);
-  }
-
-  public min(x: number, y: number, ...iterable: number[]) {
-    const m = Math.min(x, y);
-    if (iterable.length > 0) {
-      return Math.min(m, Math.min(...iterable));
+    if (start > end && step > 0) {
+      step = -step
     }
-    return m;
+    if(start <= end) 
+      return rangeInc(start, end, step)
+    return rangeDec(start, end, step)
   }
 
-  public range1(x: number) {
-    return this.range(0, x, 0 < x ? 1 : -1);
+  public list(iterable: any) {
+    if (Array.isArray(iterable)) {
+      return iterable
+    }
+    if(typeof iterable === 'string') {
+      const ss = []
+      for(var i = 0; i < iterable.length; i+=1) {
+        ss.push(iterable[i])
+      }
+      return ss;
+    }
+    if (iterable.next) {
+      const ss = []
+      var res = iterable.next()
+      while(!res.done) {
+        ss.push(res.value)
+        res = iterable.next()
+      }
+      return ss
+    }
+    return [iterable]
   }
 
-  public range2(x: number, y: number) {
-    return this.range(x, y, x < y ? 1 : -1);
-  }
-
-  public range(start: number, end: number, step: number) {
+  public range3(start: number, end: number, step: number) {
     const xs: number[] = [];
     if (start <= end) {
       if (step < 0) {
@@ -195,10 +272,6 @@ export class LibPython extends Module {
     return seq.split('').reverse().join('');
   }
 
-  public round(n: number) {
-    return Math.round(n);
-  }
-
   public setattr(x: any, key: string, value: any) {
     x[key] = value;
   }
@@ -220,14 +293,28 @@ export class LibPython extends Module {
     if (obj === undefined) {
       return '';
     }
-    if (obj.x && obj.y) {
-      return `(${obj.x}, ${obj.y})`;
-    }
-    if (obj.text) {
-      return obj.text;
-    }
     return '{' + Object.keys(obj).map(key => `${key}: ${this.repr(obj[key])}`).join(', ') + '}'
   }
+
+  public isinstance(x: any, cls: any) {
+    if (cls === this.bool) {
+      return typeof x === 'boolean';
+    }
+    if (cls === this.int) {
+      return typeof x === 'number' && Number.isInteger(x);
+    }
+    if (cls === this.float) {
+      return typeof x === 'number';
+    }
+    if (cls === this.str) {
+      return typeof x === 'string';
+    }
+    if (cls === this.list) {
+      return Array.isArray(x);
+    }
+    return false;
+  }
+
 
   /* operator */
 
@@ -260,24 +347,6 @@ export class LibPython extends Module {
     return a.indexOf(x) >= 0;
   }
 
-  public isinstance(x: any, cls: any) {
-    if (cls === this.bool) {
-      return typeof x === 'boolean';
-    }
-    if (cls === this.int) {
-      return typeof x === 'number' && Number.isInteger(x);
-    }
-    if (cls === this.float) {
-      return typeof x === 'number';
-    }
-    if (cls === this.str) {
-      return typeof x === 'string';
-    }
-    if (cls === this.list) {
-      return Array.isArray(x);
-    }
-    return false;
-  }
 
 
   /* string/array (method) */
@@ -364,14 +433,6 @@ export class LibPython extends Module {
     return list.join(s);
   }
 
-  public list(s: string, list: string[]) {
-    const ss: string[] = [];
-    for (var i = 0; i < s.length; i++) {
-      const c = s[i];
-      ss.push(c);
-    }
-    return ss;
-  }
 
   /* list */
 

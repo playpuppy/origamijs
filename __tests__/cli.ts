@@ -1,7 +1,7 @@
 import { main } from '../src/main'
 
-
 test(`main`, () => {
-  main(['hello.py'])
+  main(['-s', 'hello.py'])
+  expect(1).toStrictEqual(1)//dummy
 })
 

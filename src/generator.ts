@@ -146,6 +146,9 @@ const DefaultMethodMap: { [key: string]: string } = {
   'IndexExpr': 'acceptGetIndex',
   'GetExpr': 'acceptGetField',
   'Get': 'acceptGetIndex',
+  'If': 'acceptIfStmt',
+  'While': 'acceptWhileStmt',
+  'For': 'acceptForStmt',
 }
 
 export class FunctionContext {
