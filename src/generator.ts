@@ -136,7 +136,6 @@ abstract class CodeWriter extends Generator {
     return source
   }
 
-
 }
 
 const DefaultMethodMap: { [key: string]: string } = {
@@ -154,25 +153,39 @@ const DefaultMethodMap: { [key: string]: string } = {
 export class FunctionContext {
   isGlobalMain: boolean
   name: string
-  names: string[] = []
+  params: string[] = []
+  paramTypes: Type[] = []
+  locals: string[] = []
   hasReturn = false
   foundAsync = false
   returnType: Type
-  type: Type
+  // type: Type
   loopLevel = 0
   constructor(name: string, paramTypes: Type[] = [], returnType: Type, isGlobalMain = false) {
     this.name = name
-    this.returnType = returnType;
-    this.type = Type.newFuncType(Type.newTupleType(...paramTypes), returnType);
+    this.paramTypes = paramTypes
+    this.returnType = returnType
     this.isGlobalMain = isGlobalMain
   }
 
   declName(name: string) {
-    if(!name.startsWith('$') && !(name in this.names)) {
-      this.names.push(name)
+    if(!name.startsWith('$') && !(name in this.locals)) {
+      this.locals.push(name)
     }
-    //console.log(`declName ${name}, ${this.names}`)
   }
+
+  definedSymbol(name: string, options?: any) {
+    const ptype = Type.newTupleType(...this.paramTypes)
+    if (!this.hasReturn) {
+      this.returnType = Type.of('void')
+    }
+    if(options) {
+      return new Symbol(Type.newFuncType(ptype, this.returnType), name, options)
+    }
+    return new Symbol(Type.newFuncType(ptype, this.returnType), name)
+  }
+
+
 }
 
 export class Environment extends CodeWriter {
@@ -366,17 +379,19 @@ export class Environment extends CodeWriter {
   }
 
   public rewrite(source: string) {
-    if (this.funcBase.names.length > 0) {
-      const decls = this.token('var') + ' ' + this.funcBase.names.join(', ')
+    if (this.funcBase.locals.length > 0) {
+      const decls = this.token('var') + ' ' + this.funcBase.locals.join(',') +';'
       return source.replace('//@names', decls)
     }
     return source
   }
 
-  public stringfy(pt: ParseTree): string {
+  public stringfy(pt?: ParseTree): string {
     const buffers = this.buffers
-    this.buffers = []
-    this.visit(pt)
+    if(pt) {
+      this.buffers = []
+      this.visit(pt)
+    }
     const cs = this.buffers
     this.buffers = buffers
     return this.rewrite(stringfy(cs))

@@ -50,86 +50,6 @@ export class OrigamiJS extends Environment {
     return FloatType
   }
 
-  acceptVar(pt: ParseTree) {
-    const symbol = this.checkSymbolName(pt)
-    this.push(symbol.format());
-    return symbol.type;
-  }
-
-  acceptVarDecl(pt: ParseTree) {
-    const [right, rightType] = this.typeCheck(pt.get('right'), this.newVarType(pt.get('left')));
-    const symbol = this.checkSymbolName(pt.get('left'), rightType)
-    this.push(symbol.format())
-    this.pushS(' = ')
-    this.push(right)
-      // if (this.autoPuppyMode && symbol1.isGlobal()) {
-      //   out.push(`;puppy.v('${name}')`);
-      // }
-    return VoidType
-  }
-  
-  safeName(name: string) {    
-    if(this.inGlobal() && !this.inLocal()) {
-      return this.safeGlobalName(name)
-    }
-    return this.safeLocalName(name)
-  }
-
-  safeGlobalName(name: string) {
-    const global = this.getSymbol('$')
-    if (global) {
-      return global.format([name]);
-    }
-    return this.safeLocalName(name)
-  }
-
-  safeLocalName(name: string) {
-    return name.replace('*', '')
-  }
-
-  checkSymbolName(pt: ParseTree, ty?: Type) {
-    const name = pt.getToken();
-    const symbol = this.getSymbol(name);
-    if (symbol === undefined) {
-      const safename = this.safeGlobalName(name);
-      if(!ty) {
-        ty = this.newVarType(pt)
-      }
-      const symbol1 = this.getRoot().setSymbol(name,
-        new Symbol(ty, safename, { error: 'UndefinedName', 'source': pt }))
-      this.getRoot().funcBase.declName(safename);
-      return symbol1
-    }
-    return symbol
-  }
-
-  acceptMultiAssignment(pt: ParseTree) {
-    const [cs, ty] = this.typeCheck(pt.get('right'))
-    const symbols = []
-    for(const name of pt.get('left').subNodes()) {
-      symbols.push(this.checkSymbolName(name))
-    }
-    this.pushP('[', symbols.map(s=>s.code), ']')
-    this.push(' = ')
-    this.push(cs)
-  }
-
-  acceptTuple(pt: ParseTree) {
-    const types: Type[] = []
-    const cs: string[][] = []
-    for (const e of pt.subNodes()) {
-      const [code, type] = this.typeCheck(e)
-      cs.push(code)
-      types.push(type)
-    }
-    if (cs.length == 1) {
-      this.pushP('(', [cs[0]], ')')
-      return types[0];
-    }
-    this.pushP('[', cs, ']')
-    return Type.newTupleType(...types)
-  }
-
   acceptQString(pt: ParseTree) {
     this.push(pt.getToken())
     return StrType
@@ -157,7 +77,7 @@ export class OrigamiJS extends Environment {
   }
 
   acceptList(pt: ParseTree) {
-    var type : Type = this.newVarType(pt);
+    var type: Type = this.newVarType(pt);
     const cs: string[][] = []
     for (const e of pt.subNodes()) {
       const [code, type2] = this.typeCheck(e, type)
@@ -168,21 +88,149 @@ export class OrigamiJS extends Environment {
     return Type.newParamType('list', type);
   }
 
+  /* symbol */
+
+  safeName(name: string) {
+    if (this.inGlobal() && !this.inLocal()) {
+      return this.safeGlobalName(name)
+    }
+    return this.safeLocalName(name)
+  }
+
+  safeGlobalName(name: string) {
+    const global = this.getSymbol('$')
+    if (global) {
+      return global.format([name]);
+    }
+    return this.safeLocalName(name)
+  }
+
+  safeLocalName(name: string) {
+    return name.replace('*', '')
+  }
+
+  checkSymbol(pt: ParseTree, declTy?: Type, isParam = false): Symbol {
+    const name = pt.getToken()
+    const symbol = this.getSymbol(name)
+    if (symbol) {
+      return symbol;
+    }
+    if (declTy) {
+      const safename = this.safeName(name)
+      if (!isParam) {
+        this.funcBase.declName(safename)
+      }
+      return this.setSymbol(name, new Symbol(declTy, safename))
+    }
+    else {
+      const globalName = this.safeGlobalName(name)
+      declTy = this.newVarType(pt)
+      this.getRoot().funcBase.declName(globalName);
+      return this.getRoot().setSymbol(name,
+        new Symbol(declTy, globalName, { error: 'UndefinedName', 'source': pt }))
+    }
+  }
+
+  checkSymbols(pt: ParseTree, rightTy: Type): Symbol[] {
+    //console.log(`checkSymbols ${pt}`)
+    const nodeSize = pt.getNodeSize()
+    if (nodeSize === 0) {
+      return [this.checkSymbol(pt, rightTy)]
+    }
+    const nodes = pt.subNodes();
+    if (nodes.length === 1) {
+      return [this.checkSymbol(nodes[0], rightTy)]
+    }
+    const ss: Symbol[] = []
+    for (const n of nodes) {
+      this.checkSymbol(n, rightTy)
+    }
+    return ss;
+  }
+
+  pushSymbol(symbol: Symbol) {
+    this.push(symbol.code)
+  }
+
+  pushSymbols(symbols: Symbol[]) {
+    if (symbols.length === 1) {
+      this.pushSymbol(symbols[0])
+    }
+    else {
+      this.pushP('[', symbols.map(s => s.code), ']')
+    }
+  }
+
+  pushLet(symbol: Symbol | Symbol[]) {
+    if(symbol instanceof Symbol) {
+      this.pushSymbol(symbol)
+    }
+    else {
+      this.pushSymbols(symbol as Symbol[])
+    }
+    this.pushSP()
+    this.push('=')
+    this.pushSP()
+  }
+
+  acceptVar(pt: ParseTree) {
+    const symbol = this.checkSymbol(pt)
+    this.pushSymbol(symbol)
+    return symbol.type
+  }
+
+  acceptVarDecl(pt: ParseTree) {
+    const [right, rightType] = this.typeCheck(pt.get('right'), this.newVarType(pt.get('left')));
+    const symbol = this.checkSymbol(pt.get('left'), rightType)
+    this.pushLet(symbol)
+    this.push(right)
+      // if (this.autoPuppyMode && symbol1.isGlobal()) {
+      //   out.push(`;puppy.v('${name}')`);
+      // }
+    return VoidType
+  }
+
+  acceptMultiAssignment(pt: ParseTree) {
+    const [right, rightTy] = this.typeCheck(pt.get('right'))
+    const symbols = this.checkSymbols(pt.get('left'), rightTy)
+    this.pushLet(symbols)
+    return VoidType
+  }
+
+  acceptTuple(pt: ParseTree) {
+    const types: Type[] = []
+    const cs: string[][] = []
+    for (const e of pt.subNodes()) {
+      const [code, type] = this.typeCheck(e)
+      cs.push(code)
+      types.push(type)
+    }
+    if (cs.length == 1) {
+      this.pushP('(', [cs[0]], ')')
+      return types[0];
+    }
+    this.pushP('[', cs, ']')
+    return Type.newTupleType(...types)
+  }
+
+  /* Operator */
+
+  pushOp(op: string) {
+    this.pushSP()
+    this.pushS(op)
+    this.pushSP()
+  }
 
   acceptAnd(pt: ParseTree) {
     this.pushT(pt.get2(0, 'left'), BoolType, InInfix)
-    this.pushSP()
-    this.pushS('&&')
-    this.pushSP()
+    this.pushOp('&&')
     this.pushT(pt.get2(1, 'right'), BoolType, InInfix)
     return BoolType
   }
 
   acceptOr(pt: ParseTree) {
     this.pushT(pt.get2(0, 'left'), BoolType, InInfix)
-    this.pushSP()
-    this.pushS('||')
-    this.pushSP()
+    this.pushOp('||')
     this.pushT(pt.get2(1, 'right'), BoolType, InInfix)
     return BoolType
   }
@@ -193,7 +241,34 @@ export class OrigamiJS extends Environment {
     return BoolType
   }
 
+  readonly CMPR = ['==', '!=', '<', '<=', '>', '>='];
+
+  isComparator(pt: ParseTree) {
+    if(pt.is('Infix')) {
+      const op = normalToken(pt.getToken('op,name'))
+      return this.CMPR.indexOf(op) !== -1
+    }
+    return false;
+  }
+
+  desugarTrinaryComparator(pt: ParseTree) {
+      // (a < b) < c => a < b and b < c
+    const left = pt.get('left')
+    const right = new ParseTree('Infix')
+    right.set('left', left.get('right'))
+    right.set('op', left.get('op,name'))
+    right.set('right', pt.get('right'))
+    const and = new ParseTree('And')
+    and.append(left)
+    and.append(right)
+    return and
+  }
+
   acceptInfix(pt: ParseTree) {
+    if(this.isComparator(pt) && this.isComparator(pt.get('left'))) {
+      // (a < b) < c => a < b and b < c
+      return this.pushT(this.desugarTrinaryComparator(pt))
+    }
     const op = normalToken(pt.getToken('op,name'))
     const symbol = this.getSymbol(`${op}@2`)
     if (symbol) {
@@ -201,9 +276,7 @@ export class OrigamiJS extends Environment {
       return this.emitSymbolExpr(pt, symbol, params)
     }
     this.pushT(pt.get('left'), AnyType, InInfix)
-    this.pushSP()
-    this.pushS(op)
-    this.pushSP()
+    this.pushOp(op)
     this.pushT(pt.get('right'), AnyType, InInfix)
     return this.untyped();
   }
@@ -218,6 +291,8 @@ export class OrigamiJS extends Environment {
     this.push(op)
     return this.pushT(pt.get2(0, 'expr'), AnyType, InInfix)
   }
+
+  /* apply */
 
   splitParam(pt: ParseTree): [ParseTree[], ParseTree|undefined] {
     const params = pt.subNodes()
@@ -522,30 +597,6 @@ export class OrigamiJS extends Environment {
     return VoidType
   }
 
-  /* yield */
-  // protected pushY(pt: ParseTree, time = 0) {
-  //   if (time === 0) {
-  //     const funcBase = this.getFuncBase()
-  //     if (funcBase) {
-  //       if (funcBase.isSync === false) {
-  //         return
-  //       }
-  //       time = 1
-  //     }
-  //     else {
-  //       time = 200
-  //     }
-  //   }
-  //   const ayield = (time == 1) ? `if (Math.random() < 0.01) yield` : `yield`
-  //   const pos = pt.getPosition()
-  //   const row = pos.row * 1000 + time
-  //   if (this.prevRow !== row) {
-  //     this.pushIndent()
-  //     this.push(`${ayield} ${row}\n`);
-  //     this.prevRow = row;
-  //   }
-  // }
-
   pushYield(pt: ParseTree) {
     if (this.inGlobal() && this.hasSymbol('yield-time')) {
       const pos = pt.getPosition()
@@ -577,6 +628,75 @@ export class OrigamiJS extends Environment {
     return pt;
   }
 
+  pushCondition(symbol: string, cond: ParseTree) {
+    const [cs,] = this.typeCheck(cond, BoolType)
+    this.pushS(symbol)
+    this.pushSP()
+    this.pushP('(', [cs], ')')
+    this.pushSP()
+  }
+
+  pushLoopBody(body: ParseTree, parent: ParseTree) {
+    const loopLevel = this.funcBase.loopLevel
+    this.funcBase.loopLevel = loopLevel + 1
+    this.visit(this.makeBlock(body, parent))
+    this.funcBase.loopLevel = loopLevel
+  }
+
+  checkRanges(pt: ParseTree) {
+    if (pt.is('ApplyExpr') && pt.getToken('name') === 'range') {
+      var ranges = pt.get('params').subNodes()
+      if (ranges.length === 1) {
+        ranges = [new ParseTree('Int', '0'), ranges[0]]
+      }
+      if (ranges.length === 2) {
+        ranges.push(new ParseTree('Int', '1'))
+      }
+      return ranges;
+    }
+    return undefined;
+  }
+
+  pushForOf(symbols: Symbol[], range: ParseTree, modifier?:string) {
+    const ranges = this.checkRanges(range);
+    this.pushS('for')
+    this.push('(')
+    if (modifier) {
+      this.pushS(modifier)
+      this.pushSP()
+    }
+    this.pushSymbols(symbols)
+    if (ranges) {
+      this.push('=')
+      this.pushT(ranges[0])
+      this.push(';')
+      if(ranges[2].is('Int')) {
+        this.pushSymbols(symbols)
+        this.push('<')
+        this.pushT(ranges[1])
+      }
+      else {
+        this.push(`${EntryPoint}.$check_range(`)
+        this.pushSymbols(symbols)
+        this.push(',')
+        this.pushT(ranges[1])
+        this.push(',')
+        this.pushT(ranges[2])
+        this.push(')')
+      }
+        this.push(';')
+        this.pushSymbols(symbols)
+        this.push('+=')
+        this.pushT(ranges[2])
+    }
+    else {
+      this.pushOp('of')
+      this.visit(range)
+    }
+    this.push(')')
+    this.pushSP()
+  }
+
   acceptIfStmt(pt: ParseTree) {
     const [cs,] = this.typeCheck(pt.get('cond'), BoolType)
     this.pushS('if')
@@ -603,31 +723,38 @@ export class OrigamiJS extends Environment {
     }
     return VoidType;
   }
-
+ 
   acceptWhileStmt(pt: ParseTree) {
     this.funcBase.foundAsync = true
-    const [cs,] = this.typeCheck(pt.get('cond'), BoolType)
-    this.pushS('while')
-    this.pushSP()
-    this.pushP('(', [cs], ')')
-    this.pushSP()
-    const loopLevel = this.funcBase.loopLevel
-    this.funcBase.loopLevel = loopLevel + 1
-    this.visit(this.makeBlock(pt.get('body'), pt))
-    this.funcBase.loopLevel = loopLevel
+    this.pushCondition('while', pt.get('cond'))
+    this.pushLoopBody(pt.get('body'), pt)
     return VoidType
   }
 
+ 
   acceptForStmt(pt: ParseTree) {
-    this.pushS('for ')
-    this.push('(')
-    this.pushT(pt.get('cond'), BoolType)
-    this.push(')')
-    const loopLevel = this.funcBase.loopLevel
-    this.funcBase.loopLevel = loopLevel + 1
-    this.visit(this.makeBlock(pt.get('body'), pt))
-    this.funcBase.loopLevel = loopLevel
+    const [range, rangeTy] = this.typeCheck(pt.get('list'))
+    const symbols = this.checkSymbols(pt.get('each'), this.elementType(rangeTy))
+    this.pushForOf(symbols, pt.get('list'))
+    this.pushLoopBody(pt.get('body'), pt)
     return VoidType
+  }
+
+  acceptListForExpr(pt: ParseTree) {
+    const lenv = this.newFunctionContext(pt, '')
+    lenv.push('{ const $xs = [];')
+    for(const foreach of pt.subNodes()) {
+      const [range, rangeTy] = lenv.typeCheck(foreach.get('list'))
+      const symbols = lenv.checkSymbols(foreach.get('each'), this.elementType(rangeTy))
+      lenv.pushForOf(symbols, foreach.get('list'), 'var')
+      if(foreach.has('cond')) {
+        lenv.pushCondition('if', foreach.get('cond'))
+      }
+    }
+    const [cs, ty] = lenv.typeCheck(pt.get('append'))
+    lenv.pushP('$xs.push(', [cs], ');return $xs; }')
+    this.pushFunction(lenv, '()');
+    return Type.newParamType('list', ty)
   }
 
   acceptContinue(pt: ParseTree) {
@@ -667,62 +794,81 @@ export class OrigamiJS extends Environment {
     return VoidType
   }
 
-  /* func decl*/
-  acceptFuncDecl(pt: ParseTree) {
-    const name = pt.getToken('name');
-    const defined = this.getSymbol(name);
-    if (defined) {
-      this.perror(pt, 'RedefinedName')
+  /* Function Decl */
+
+  protected newFunctionContext(parent: ParseTree, name: string = '') {
+    const lenv = this.newEnv()
+    lenv.funcBase = new FunctionContext(name, [], lenv.newVarType(parent))
+    return lenv
+  }
+
+  protected addParameter(name: ParseTree, ptype?: Type) {
+    const pname = name.getToken()
+    if(!ptype) {
+      ptype = this.newVarType(name)
     }
-    const lenv = this.newEnv();
-    const names = [];
-    const ptypes: Type[] = [];
-    for (const p of pt.get('params').subNodes()) {
-      const pname = p.getToken('name')
-      const ptype = lenv.newVarType(p.get('name'));
-      const symbol = lenv.setSymbol(pname, new Symbol(ptype, lenv.safeLocalName(pname)))
-      ptypes.push(ptype);
-      names.push(symbol.code);
+    const symbol = this.setSymbol(pname, new Symbol(ptype, this.safeLocalName(pname)))
+    this.funcBase.params.push(symbol.code)
+    this.funcBase.paramTypes.push(ptype)
+  }
+
+  defineSymbol(name: string, symbol: Symbol, source?: ParseTree) {
+    if (source) {
+      const defined = this.getSymbol(name)
+      if (defined) {
+        this.perror(source.get('name'), 'RedefinedName')
+      }
     }
-    const funcBase = lenv.funcBase = new FunctionContext(name, ptypes, lenv.newVarType(pt.get('name')))
-    var defun = lenv.setSymbol(name, new Symbol(funcBase.type, this.safeName(name), Async))
-    //lenv.decIndent()
-    const body = lenv.stringfy(this.makeBlock(pt.get('body'), pt))
-    // check 
-    if (!funcBase.hasReturn) {
-      defun.type = Type.newFuncType(funcBase.type, VoidType)
+    this.setSymbol(name, symbol)
+    this.funcBase.declName(symbol.code)
+  }
+
+  pushFunction(body: OrigamiJS, suffix?:string) {
+    if(suffix) {
+      this.push('(')
     }
-    this.setSymbol(name, defun)
-    this.funcBase.declName(defun.code)
-    if (funcBase.foundAsync) {
-      this.push(defun.format())
-      this.pushS(' = ')
-      this.push('function*');
-      this.pushP('(', names,')')
+    if (this.funcBase.foundAsync) {
+      this.pushS('function*');
+      this.pushP('(', this.funcBase.params, ')')
       this.pushSP()
-      this.push(body)
     }
     else {
-      this.push(defun.format())
-      this.pushS(' = ')
-      this.pushP('(', names, ')')
-      this.push(' => ');
-      this.push(body)
-      delete defun.options
+      this.pushP('(', this.funcBase.params, ')')
+      this.pushOp('=>')
     }
-    if(defun.code.startsWith('$')) {
-      this.pushLF()
-      this.pushIndent()
-      this.push(`var ${name} = `)
-      this.pushP('(', names, ')')
-      this.push(' => ');
-      if (funcBase.foundAsync) {
-        this.pushP(`${EntryPoint}.$__sync__(${defun.format()}(`, names, '))')      
-      }
-      else{
-        this.pushP(`${defun.format()}(`, names, ')')      
-      }
+    this.push(body.stringfy())
+    if (suffix) {
+      this.push(')' + suffix)
     }
+  }
+
+  acceptFuncDecl(pt: ParseTree) {
+    const name = pt.getToken('name')
+    const lenv = this.newFunctionContext(pt, name)
+    for (const p of pt.get('params').subNodes()) {
+      lenv.addParameter(p.get('name'))
+    }
+    const funcBase = lenv.funcBase
+    lenv.setSymbol(name, funcBase.definedSymbol(this.safeName(name), Async))
+    lenv.visit(this.makeBlock(pt.get('body'), pt))
+    const defun = lenv.funcBase.definedSymbol(this.safeName(name))
+    this.defineSymbol(name, defun, pt)
+    //
+    this.pushLet(defun)
+    this.pushFunction(lenv)
+    // if(defun.code.startsWith('$')) {
+    //   this.pushLF()
+    //   this.pushIndent()
+    //   this.push(`var ${name} = `)
+    //   this.pushP('(', funcBase.params, ')')
+    //   this.push(' => ');
+    //   if (funcBase.foundAsync) {
+    //     this.pushP(`${EntryPoint}.$__sync__(${defun.format()}(`, funcBase.params, '))')      
+    //   }
+    //   else{
+    //     this.pushP(`${defun.format()}(`, funcBase.params, ')')      
+    //   }
+    // }
     //console.log(`DEFINED ${name} :: ${defun.type}`)
     return VoidType
   }
