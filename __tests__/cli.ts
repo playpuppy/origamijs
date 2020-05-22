@@ -1,4 +1,4 @@
-import { main } from '../src/main'
+import { main } from '../src/puppy-cli'
 
 test(`main`, () => {
   main(['-s', 'hello.py'])
