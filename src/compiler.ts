@@ -318,7 +318,7 @@ export class OrigamiJS extends Environment {
     if (!symbol && this.lang) {
       const moduleName = this.lang.findModuleFromSymbol(name)
       if(moduleName) {
-        this.importModule(moduleName, {name})
+        this.importAutoModule(moduleName, {name})
         var symbol = this.getSymbol(key)
         if(symbol) {
           this.perror(pt.get('name'), 'AutomatedImport', {'module': moduleName})
@@ -350,10 +350,11 @@ export class OrigamiJS extends Environment {
     const name = pt.getToken('name')
     const recv = pt.get('recv')
     const [params, options] = this.splitParam(pt.get('params'))
-    // if (this.isModule(recv)) {
-    //   const symbol = env.getModule(recv, name);
-    //   return this.ApplySymbolExpr(env, t, name, symbol, undefined, out);
-    // }
+    const mkey = `${name}@${params.length}`;
+    const msymbol = this.getModuleSymbol(recv.getToken(), mkey, pt.get('name'))
+    if(msymbol) {
+      return this.emitSymbolExpr(pt, msymbol, params, options);
+    }
     const key = `.${name}@${params.length+1}`;
     const symbol = this.getSymbol(key);
     //console.log(`${pt} ${name} ${key} ${symbol}`)
@@ -914,13 +915,40 @@ export class OrigamiJS extends Environment {
     return undefined;
   }
 
-  importModule(name: string, names?: { [key: string]: string }) {
+  newModuleSymbol(name: string, module: Module) {
+    const symbols = symbolMap(module)
+    return new Symbol(AnyType, name, { symbols })
+  }
+
+  getModuleSymbol(name: string, key: string, keyTree: ParseTree) {
+    const symbol = this.getSymbol(name)
+    if(symbol && symbol.options && symbol.options.symbols) {
+      const moduleSymbol = symbol.options.symbols[key]
+      if(!moduleSymbol) {
+        this.perror(keyTree, 'UndefinedName')
+      }
+      return moduleSymbol;
+    }
+    return undefined
+  }
+
+  acceptImportDecl(pt: ParseTree) {
+    const module = this.getModule(pt.get('name'))
+    if (module) {
+      const alias = pt.has('alias') ? pt.get('alias') : pt.get('name');
+      const name = alias.getToken()
+      const symbol = this.newModuleSymbol(`${EntryPoint}.${module.entryKey}`, module);
+      this.setSymbol(name, symbol);
+      // this.pushLet(symbol)
+      // this.push(`${EntryPoint}.${module.entryKey}`)
+    }
+    return VoidType
+  }
+
+  importAutoModule(name: string, names?: { [key: string]: string }) {
     const module = this.loadModule(name)
     if (module) {
-      const symbols = symbolMap(module)
-      for (const key of Object.keys(symbols)) {
-        this.setSymbol(key, symbols[key])
-      }
+      return this.newModuleSymbol(name, module)
     }
     return undefined;
   }
@@ -936,15 +964,7 @@ export class OrigamiJS extends Environment {
     return VoidType
   }
 
-  acceptImportDecl(pt: ParseTree) {
-    const mod = this.getModule(pt.get('name'));
-    if(mod) {
-      const alias = pt.has('alias') ? pt.get('alias') : pt.get('name');
-      const aliasName = alias.getToken()
-      this.setSymbol(aliasName, new Symbol(VoidType, aliasName, {module: symbolMap(mod)}));
-    }
-    return VoidType
-  }
+
 
   // Block
   acceptBlock(pt: ParseTree) {

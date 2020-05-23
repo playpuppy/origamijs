@@ -2,7 +2,8 @@ import * as fs from 'fs'  //fs = require('fs')
 import * as readline from 'readline'
 import { Origami } from "./index"
 import { Language, EntryPoint } from "./modules"
-import { LibNode } from './libnodejs'
+import { LibNode } from './libnode'
+import { LibMath } from './libmath'
 
 const run = (source: string, context: any) => {
   const main = `
@@ -19,6 +20,15 @@ return function (${EntryPoint}) {
   }
 }
 
+const newOrigami = () => {
+  return new Origami(new Language(
+    ['', new LibNode()],
+    ['math', new LibMath()]
+  ))
+
+}
+
+
 const load = (file: string, isSource = false) => {
   var source = ''
   try {
@@ -27,9 +37,7 @@ const load = (file: string, isSource = false) => {
     console.log(`failed to read ${error}`)
     return
   }
-  const origami = new Origami(new Language(
-    ['', new LibNode()]
-  ))
+  const origami = newOrigami()
   const code = origami.compile(source)
   if (isSource) {
     console.log(code.compiled)
@@ -40,9 +48,7 @@ const load = (file: string, isSource = false) => {
 }
 
 const inter = (isSource: boolean) => {
-  const origami = new Origami(new Language(
-    ['', new LibNode()]
-  ))
+  const origami = newOrigami()
   var rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,

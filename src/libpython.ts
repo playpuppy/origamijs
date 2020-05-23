@@ -1,5 +1,4 @@
 import { Module, SymbolList } from './modules';
-import { SSL_OP_ALL } from 'constants';
 
 const DefineLibPython: SymbolList = [
   ['bool', 'any->bool', '$$bool'],
